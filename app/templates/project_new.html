@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-hero">
+  <h1 class="page-title mb-2">Новый проект</h1>
+  <p class="page-lead mb-0">Фаза 1: укажите название и загрузите CSV или JSON в кодировке UTF-8. После создания вы перейдёте к настройке колонок и запуску анализа.</p>
+</div>
+<div class="card narrow-form">
+  <div class="card-body p-4">
+    <div class="mb-3">
+      <label class="form-label fw-semibold" for="projectName">Название проекта</label>
+      <input type="text" class="form-control form-control-lg" id="projectName" maxlength="200" required
+             aria-label="Название проекта" placeholder="Например, отзывы магазина за январь">
+    </div>
+    <div class="mb-4">
+      <label class="form-label fw-semibold" for="fileInput">Файл данных</label>
+      <input class="form-control" type="file" id="fileInput" accept=".csv,.json" required
+             aria-label="Файл с отзывами">
+      <div class="form-text">Поддерживаются расширения <code>.csv</code> и <code>.json</code>.</div>
+    </div>
+    <button type="button" class="btn btn-primary btn-lg" id="btnCreate" aria-label="Создать проект и загрузить файл">
+      Создать проект
+    </button>
+    <div id="formAlert" class="mt-3" role="status" aria-live="polite"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/project_new.js" defer></script>
+{% endblock %}

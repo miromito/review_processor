@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-hero page-toolbar">
+  <div>
+    <h1 class="page-title mb-0">Проекты</h1>
+  </div>
+  <a class="btn btn-primary" href="/projects/new" aria-label="Создать новый проект">Новый проект</a>
+</div>
+<div id="listAlert" class="mb-3" role="status" aria-live="polite"></div>
+<div class="d-md-none">
+  <div class="list-group shadow-sm" id="projectsListMobile" aria-label="Список проектов (мобильный)"></div>
+</div>
+<div class="table-responsive shadow-sm d-none d-md-block">
+  <table class="table table-hover align-middle mb-0" aria-label="Список проектов">
+    <thead class="table-light">
+      <tr>
+        <th scope="col">Название</th>
+        <th scope="col">Фаза</th>
+        <th scope="col">Файл</th>
+        <th scope="col">Строк</th>
+        <th scope="col">Обновлён</th>
+        <th scope="col" class="text-end">Действия</th>
+      </tr>
+    </thead>
+    <tbody id="projectsBody"></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/projects_list.js" defer></script>
+{% endblock %}

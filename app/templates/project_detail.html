@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="project-head">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 pb-2">
+    <div class="min-w-0 flex-grow-1">
+      <h1 class="page-title text-truncate mb-1" id="projectTitle">Проект</h1>
+      <p class="text-muted small mb-0 text-break" id="phaseBadge"></p>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center flex-shrink-0">
+      <button type="button" class="btn btn-outline-primary btn-sm d-none" id="btnReanalyze" aria-label="Заново проанализировать отзывы">
+        Переанализировать
+      </button>
+      <a class="btn btn-outline-secondary btn-sm" href="/" aria-label="К списку проектов">Все проекты</a>
+    </div>
+  </div>
+</div>
+
+<section id="phase1" class="card shadow-sm mb-4 d-none">
+  <div class="card-header">Фаза 1 — файл</div>
+  <div class="card-body">
+    <p class="small text-muted">Лимит токенов: <strong>{{ token_limit_t }}</strong> · модель: <strong>{{ openai_model }}</strong></p>
+    <label class="form-label" for="fileInput">Загрузить CSV или JSON</label>
+    <input class="form-control" type="file" id="fileInput" accept=".csv,.json" aria-label="Файл с отзывами">
+    <button type="button" class="btn btn-primary mt-3" id="btnUpload">Загрузить файл</button>
+    <div id="uploadAlert" class="mt-2" role="status"></div>
+  </div>
+</section>
+
+<section id="phase2" class="card shadow-sm mb-4 d-none">
+  <div class="card-header">Фаза 2 — конфигурация колонок</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" for="textColumn">Текст отзыва</label>
+        <select class="form-select" id="textColumn" aria-label="Колонка с текстом"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="dateColumn">Дата (необязательно)</label>
+        <select class="form-select" id="dateColumn" aria-label="Колонка с датой">
+          <option value="">— нет —</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="filterColumns">Фильтры (несколько — Ctrl)</label>
+        <select class="form-select" id="filterColumns" multiple size="5" aria-label="Колонки фильтров"></select>
+      </div>
+    </div>
+    <button type="button" class="btn btn-outline-primary mt-3" id="btnMapping">Сохранить конфигурацию</button>
+    <div id="mappingAlert" class="mt-2" role="status"></div>
+  </div>
+</section>
+
+<section id="phase3" class="card shadow-sm mb-4 d-none">
+  <div class="card-header">Фаза 3 — анализ</div>
+  <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+    <button type="button" class="btn btn-success" id="btnAnalyze" aria-label="Запустить анализ">Запустить анализ</button>
+    <span class="text-muted small" id="jobStatus"></span>
+  </div>
+</section>
+
+<section id="phaseDone" class="d-none">
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-dash" data-bs-toggle="tab" data-bs-target="#pane-dash" type="button"
+              role="tab" aria-controls="pane-dash" aria-selected="true">Графики</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-table" data-bs-toggle="tab" data-bs-target="#pane-table" type="button"
+              role="tab" aria-controls="pane-table" aria-selected="false">Отзывы</button>
+    </li>
+  </ul>
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="pane-dash" role="tabpanel" aria-labelledby="tab-dash">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <h2 class="h6 text-uppercase text-muted mb-0">Графики</h2>
+        <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+                data-bs-toggle="offcanvas" data-bs-target="#chartFiltersOffcanvas" aria-controls="chartFiltersOffcanvas"
+                aria-label="Открыть фильтры для графиков">
+          <span aria-hidden="true">☰</span>
+          Фильтры
+        </button>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header">Сводка тональности</div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                «Пирог»: какая доля всех отзывов позитивная (зелёный), негативная (красный), нейтральная (серый), прочее (оранжевый).
+              </p>
+              <details class="small border ra-hint rounded px-2 py-2 mb-3 bg-body-secondary bg-opacity-25">
+                <summary class="fw-semibold text-secondary user-select-none">Подсказка</summary>
+                <div class="text-muted mt-2 mb-0">
+                  <strong>Пример:</strong> зелёный занимает больше половины круга — в целом фон доброжелательный; если красный заметен — негатив тоже значимый.
+                  К датам не привязано — это общая картина по всему анализу.
+                </div>
+              </details>
+              <div class="position-relative" style="min-height: 220px;">
+                <canvas id="chartSentiment" aria-label="Распределение тональности"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100" id="insightCard">
+            <div class="card-header">Краткий бизнес-инсайт</div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Текст появляется сам после успешного анализа: модель смотрит на сводные цифры и на первые 50 отзывов из префикса K и пишет, на что обратить внимание.
+              </p>
+              <p class="small text-muted mb-2">
+                Инсайт относится ко <strong>всему проекту</strong> целиком и <strong>не меняется</strong> от фильтров графиков (даты, тема, колонки из файла).
+              </p>
+              <p class="small text-muted mb-2" id="insightMeta" role="status"></p>
+              <div id="insightBody" class="border rounded p-3 bg-body-secondary bg-opacity-25 small" style="white-space: pre-wrap;" role="region" aria-live="polite">
+                Загрузка…
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-4 d-none" id="timelineCard">
+        <div class="card-header">Динамика тональности и доля позитивных</div>
+        <div class="card-body">
+          <p class="small text-muted mb-2">
+            <strong>Две шкалы:</strong> слева — сколько отзывов каждой тональности <em>в этот календарный день</em> (целые числа).
+            Справа — доля позитивных среди всех отзывов за день (в процентах, <strong>без десятичных</strong>); сплошная синяя — по дню, <strong>пунктир</strong> — среднее за последние 7 дней (удобнее смотреть тренд).
+          </p>
+          <details class="small border ra-hint rounded px-2 py-2 mb-3 bg-body-secondary bg-opacity-25">
+            <summary class="fw-semibold text-secondary user-select-none">Как читать и что полезного</summary>
+            <div class="text-muted mt-2 mb-0">
+              Если в день всего 1–3 отзыва, доля % будет резко прыгать (0%, 50%, 100%) — это не ошибка, просто мало данных.
+              В таких случаях смотрите в первую очередь <strong>пунктир</strong> и всплески <strong>красной/зелёной</strong> линии слева (реальные объёмы негатива и позитива).
+              Полезные сигналы: несколько дней подряд растёт красная или падает пунктир; день с нулём отзывов на левой шкале — в этот день просто нечего усреднять по %.
+              <strong>Клик по точке</strong> на зелёной, красной или серой линии — список отзывов за этот день (с учётом фильтров графиков). Нужна колонка даты в проекте.
+            </div>
+          </details>
+          <div class="position-relative" style="min-height: 280px;">
+            <canvas id="chartTimeline" aria-label="Тональность и процент позитивных по датам"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-lg-7">
+          <div class="card shadow-sm h-100">
+            <div class="card-header">Темы и тональность</div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Строка = тема. Полоска из цветов: сколько отзывов с этой темой — позитив (зелёный), нейтрал (серый), негатив (красный).
+              </p>
+              <details class="small border ra-hint rounded px-2 py-2 mb-3 bg-body-secondary bg-opacity-25">
+                <summary class="fw-semibold text-secondary user-select-none">Подсказка</summary>
+                <div class="text-muted mt-2 mb-0">
+                  <strong>Пример:</strong> тема «доставка» длинная, но красный кусок большой — люди часто недовольны доставкой, даже если тема в целом часто встречается.
+                  Один отзыв может иметь несколько тем — он попадёт в несколько строк.
+                </div>
+              </details>
+              <div class="position-relative" style="min-height: 280px;">
+                <canvas id="chartTopicStack" aria-label="Горизонтальная диаграмма тем и тональности"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-5">
+          <div class="card shadow-sm h-100">
+            <div class="card-header">«Боль»: негатив по теме</div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Чем длиннее красный столбец, тем больше негативных отзывов с этой темой. Наведите мышь — увидите объём и % негатива.
+              </p>
+              <details class="small border ra-hint rounded px-2 py-2 mb-3 bg-body-secondary bg-opacity-25">
+                <summary class="fw-semibold text-secondary user-select-none">Подсказка</summary>
+                <div class="text-muted mt-2 mb-0">
+                  <strong>Пример:</strong> тема «поддержка» не самая длинная, но % негатива высокий — стоит разобрать именно её, а не ту, что просто часто упоминается в нейтрале.
+                </div>
+              </details>
+              <div class="position-relative" style="min-height: 280px;">
+                <canvas id="chartPain" aria-label="Рейтинг негатива по темам"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card shadow-sm mb-4" id="scatterCard">
+        <div class="card-header">Дата, тональность и тема</div>
+        <div class="card-body">
+          <div id="scatterHelpWrap">
+            <p class="small text-muted mb-2">
+              Один пузырёк = выбранный <strong>шаг по времени</strong> × одна из трёх тональностей (негатив, нейтрал, позитив). Размер — число отзывов, цвет — самая частая тема.
+              <strong>По дням</strong> — шкала календарных дат. <strong>Неделя / месяц / квартал / год</strong> — по горизонтали одна колонка на период, разные тональности — друг над другом в этой колонке.
+              <strong>Клик</strong> — отзывы за день или за весь период.
+            </p>
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-12 col-sm-auto">
+                <label class="form-label small mb-0" for="scatterGroupBy">Шаг по времени</label>
+                <select class="form-select form-select-sm" id="scatterGroupBy" aria-label="Группировка дат на графике пузырьков">
+                  <option value="day">По дням</option>
+                  <option value="week">По неделям (пн–вс)</option>
+                  <option value="month">По месяцам</option>
+                  <option value="quarter">По кварталам</option>
+                  <option value="year">По годам</option>
+                </select>
+              </div>
+            </div>
+            <details class="small border ra-hint rounded px-2 py-2 mb-3 bg-body-secondary bg-opacity-25">
+              <summary class="fw-semibold text-secondary user-select-none">Подсказка</summary>
+              <div class="text-muted mt-2 mb-0">
+                <strong>Пример:</strong> при «по месяцам» один пузырёк — все негативные за январь; при «по неделям» — за календарную неделю. Если по дням слишком мелко — переключите на неделю или месяц.
+                Нужна колонка даты в файле.
+              </div>
+            </details>
+          </div>
+          <div id="scatterPlaceholder" class="alert alert-secondary mb-0 d-none" role="status"></div>
+          <div id="scatterLegend" class="small d-flex flex-wrap align-items-center gap-2 mb-2 d-none" aria-label="Легенда тем"></div>
+          <div class="position-relative" style="min-height: 340px;">
+            <canvas id="chartScatter" class="d-none" aria-label="Пузырьки: дата, три тональности и доминирующая тема"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="tab-pane fade" id="pane-table" role="tabpanel" aria-labelledby="tab-table">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header">Фильтры</div>
+        <div class="card-body">
+          <details class="small border ra-hint rounded px-2 py-2 mb-3 bg-body-secondary bg-opacity-25">
+            <summary class="fw-semibold text-secondary user-select-none">Справка по таблице и фильтрам</summary>
+            <div class="text-muted mt-2 mb-0">
+              Строки — проанализированные отзывы из префикса K. <strong>Тональность</strong> — метка модели для всего текста.
+              <strong>Тема 1–3</strong> — позиции в списке тем из анализа; фильтр «точное совпадение» для выбранного слота.
+              <strong>Любая тема</strong> — отзыв подходит, если выбранная строка встречается как подстрока в любой из тем.
+              <strong>Текст / дата</strong> — поиск подстроки в тексте отзыва или в отображаемой дате. Дополнительные поля — колонки-фильтры из файла (подстрока в значении).
+              Кнопки «Назад» / «Вперёд» листают страницы по 50 строк после применения фильтров.
+            </div>
+          </details>
+          <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterSentiment">Тональность</label>
+              <select class="form-select form-select-sm" id="filterSentiment" aria-label="Фильтр по тональности">
+                <option value="">— все —</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterTopic1">Тема 1</label>
+              <select class="form-select form-select-sm" id="filterTopic1" aria-label="Фильтр по первой теме"></select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterTopic2">Тема 2</label>
+              <select class="form-select form-select-sm" id="filterTopic2" aria-label="Фильтр по второй теме"></select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterTopic3">Тема 3</label>
+              <select class="form-select form-select-sm" id="filterTopic3" aria-label="Фильтр по третьей теме"></select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterTopicAny">Любая тема</label>
+              <select class="form-select form-select-sm" id="filterTopicAny" aria-label="Тема в любом слоте"></select>
+            </div>
+            <div class="col-12 col-md-6 col-lg-3">
+              <label class="form-label small mb-0" for="filterQ">Текст отзыва</label>
+              <input type="search" class="form-control form-control-sm" id="filterQ" placeholder="Подстрока…" aria-label="Поиск по тексту отзыва">
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterDateQ">Дата</label>
+              <input type="search" class="form-control form-control-sm" id="filterDateQ" placeholder="Подстрока…" aria-label="Поиск по дате">
+            </div>
+            <div class="col-12" id="filterColumnsWrap"></div>
+            <div class="col-12 d-flex flex-wrap gap-2 mt-1">
+              <button type="button" class="btn btn-primary btn-sm" id="btnFilterApply" aria-label="Применить фильтры">Применить</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnFilterReset" aria-label="Сбросить фильтры">Сбросить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2" id="tablePagerTop">
+        <span class="small text-muted" id="tableMetaTop" role="status"></span>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-outline-primary btn-sm" id="btnTablePrevTop" aria-label="Предыдущая страница таблицы">Назад</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="btnTableNextTop" aria-label="Следующая страница таблицы">Вперёд</button>
+        </div>
+      </div>
+      <div class="card shadow-sm">
+        <div class="card-body table-responsive">
+          <table class="table table-sm" id="resultsTable" aria-label="Результаты по строкам">
+            <thead>
+              <tr id="resultsTableHeadRow">
+                <th>#</th>
+                <th>Тональность</th>
+                <th>Тема 1</th>
+                <th>Тема 2</th>
+                <th>Тема 3</th>
+                <th>Текст</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span class="small text-muted" id="tableMetaBottom" role="status"></span>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnTablePrev" aria-label="Предыдущая страница">Назад</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnTableNext" aria-label="Следующая страница">Вперёд</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="modal fade" id="reviewsByDateModal" tabindex="-1" aria-labelledby="reviewsByDateTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="reviewsByDateTitle">Отзывы за дату</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть окно"></button>
+      </div>
+      <div class="modal-body" id="reviewsByDateBody"></div>
+    </div>
+  </div>
+</div>
+
+<div class="offcanvas offcanvas-end" tabindex="-1" id="chartFiltersOffcanvas" aria-labelledby="chartFiltersOffcanvasTitle">
+  <div class="offcanvas-header">
+    <h2 class="offcanvas-title h6 mb-0" id="chartFiltersOffcanvasTitle">Фильтры графиков</h2>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Закрыть"></button>
+  </div>
+  <div class="offcanvas-body">
+    <p class="small text-muted mb-2">
+      <strong>Пример:</strong> хотите смотреть только январь — укажите «с» и «по», нажмите «Применить».
+      Нужны только отзывы, где в темах есть слово «доставка» — выберите тему и примените.
+      Ниже по каждой колонке-фильтру из файла (город, канал и т.д.) — выпадающий список уникальных значений из загруженных строк; «— все —» снимает ограничение.
+    </p>
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-6">
+        <label class="form-label small mb-0" for="chartDateFrom">Дата с</label>
+        <input type="date" class="form-control form-control-sm" id="chartDateFrom" aria-label="Начало периода для графиков">
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label small mb-0" for="chartDateTo">Дата по</label>
+        <input type="date" class="form-control form-control-sm" id="chartDateTo" aria-label="Конец периода для графиков">
+      </div>
+      <div class="col-12">
+        <label class="form-label small mb-0" for="chartTopic">Тема в отзыве</label>
+        <select class="form-select form-select-sm" id="chartTopic" aria-label="Оставить отзывы где тема содержит выбранное">
+          <option value="">— все темы —</option>
+        </select>
+      </div>
+      <div class="col-12" id="chartFilterColsWrap"></div>
+      <div class="col-12 d-flex flex-wrap gap-2 mt-2">
+        <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="btnChartFiltersApply" aria-label="Применить фильтры к графикам">Применить</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1" id="btnChartFiltersReset" aria-label="Сбросить фильтры графиков">Сбросить</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script>
+  globalThis.__PROJECT_ID__ = "{{ project_id }}";
+</script>
+<script src="/static/project_detail.js?v={{ project_detail_js_v }}" defer></script>
+{% endblock %}

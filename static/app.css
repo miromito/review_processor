@@ -1,0 +1,364 @@
+/* Строгая тема: навигация, типографика, карточки — поверх Bootstrap 5.3 */
+
+:root {
+  color-scheme: light;
+  --ra-ink: #0f172a;
+  --ra-ink-muted: #475569;
+  --ra-surface: #ffffff;
+  --ra-surface-2: #f1f5f9;
+  --ra-border: #e2e8f0;
+  --ra-accent: #0f2744;
+  --ra-accent-hover: #0a1c33;
+  --ra-teal: #0d6e7a;
+  --ra-radius: 10px;
+  --ra-radius-sm: 8px;
+  --ra-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --bs-body-font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bs-body-color: var(--ra-ink);
+  --bs-body-bg: #eef2f6;
+  --bs-primary: var(--ra-accent);
+  --bs-primary-rgb: 15, 39, 68;
+  --bs-link-color: #1d4e7a;
+  --bs-link-hover-color: #0f2744;
+  --bs-border-color: var(--ra-border);
+  --bs-border-radius: var(--ra-radius-sm);
+  --bs-card-border-radius: var(--ra-radius);
+  --bs-card-box-shadow: var(--ra-shadow);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  text-underline-offset: 0.14em;
+}
+
+.site-header {
+  z-index: 1030;
+  box-shadow: 0 1px 0 var(--ra-border);
+}
+
+.site-header .navbar {
+  --bs-navbar-padding-y: 0.65rem;
+}
+
+.brand-mark {
+  flex-shrink: 0;
+}
+
+.brand-text {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 1.05rem;
+  color: var(--ra-ink);
+}
+
+.brand-sub {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ra-ink-muted);
+  line-height: 1.2;
+}
+
+.navbar .nav-link {
+  font-weight: 500;
+  color: var(--ra-ink-muted);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--ra-radius-sm);
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+  color: var(--ra-accent);
+  background: rgba(15, 39, 68, 0.06);
+}
+
+.navbar .nav-link.active {
+  color: var(--ra-accent);
+  background: rgba(15, 39, 68, 0.08);
+}
+
+.navbar-toggler {
+  border-color: var(--ra-border);
+  padding: 0.4rem 0.55rem;
+}
+
+.navbar-toggler:focus {
+  box-shadow: 0 0 0 0.2rem rgba(15, 39, 68, 0.15);
+}
+
+.site-main {
+  flex: 1 0 auto;
+}
+
+.site-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--ra-border);
+  background: var(--ra-surface);
+  color: var(--ra-ink-muted);
+  font-size: 0.8125rem;
+}
+
+/* Страницы */
+.page-stack {
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.page-hero {
+  margin-bottom: 1.5rem;
+}
+
+.page-title {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ra-ink);
+  font-size: clamp(1.35rem, 2.5vw, 1.65rem);
+}
+
+.page-lead {
+  color: var(--ra-ink-muted);
+  max-width: 48rem;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.card {
+  border: 1px solid var(--ra-border);
+  box-shadow: var(--ra-shadow);
+}
+
+.card-header {
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
+  background: linear-gradient(180deg, #fafbfc 0%, #f4f6f8 100%);
+  border-bottom-color: var(--ra-border);
+}
+
+.table {
+  --bs-table-hover-bg: rgba(15, 39, 68, 0.04);
+}
+
+.table thead th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--ra-ink-muted);
+  border-bottom-width: 1px;
+}
+
+.table-responsive {
+  border: 1px solid var(--ra-border);
+  border-radius: var(--ra-radius);
+  overflow: hidden;
+  background: var(--ra-surface);
+}
+
+.table-hover tbody tr:hover td {
+  color: var(--ra-ink);
+}
+
+.badge.bg-secondary {
+  background-color: #64748b !important;
+  font-weight: 500;
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--ra-accent);
+  --bs-btn-border-color: var(--ra-accent);
+  --bs-btn-hover-bg: var(--ra-accent-hover);
+  --bs-btn-hover-border-color: var(--ra-accent-hover);
+  --bs-btn-active-bg: var(--ra-accent-hover);
+  --bs-btn-active-border-color: var(--ra-accent-hover);
+  font-weight: 600;
+}
+
+.btn-success {
+  --bs-btn-bg: #157a4a;
+  --bs-btn-border-color: #157a4a;
+  --bs-btn-hover-bg: #0f5c38;
+  --bs-btn-hover-border-color: #0f5c38;
+  font-weight: 600;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--ra-accent);
+  --bs-btn-border-color: rgba(15, 39, 68, 0.35);
+  --bs-btn-hover-bg: var(--ra-accent);
+  --bs-btn-hover-border-color: var(--ra-accent);
+  font-weight: 600;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: rgba(15, 39, 68, 0.45);
+  box-shadow: 0 0 0 0.2rem rgba(15, 39, 68, 0.12);
+}
+
+.nav-tabs .nav-link {
+  font-weight: 600;
+  color: var(--ra-ink-muted);
+  border: 1px solid transparent;
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--ra-accent);
+  border-color: var(--ra-border) var(--ra-border) transparent;
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--ra-accent);
+  border-color: var(--ra-border) var(--ra-border) var(--ra-surface);
+}
+
+.modal-header {
+  border-bottom-color: var(--ra-border);
+}
+
+.modal-title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Форма «новый проект» — узкая колонка */
+.narrow-form {
+  max-width: 38rem;
+}
+
+/* Деталь проекта: шапка */
+.project-head {
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--ra-border);
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 575.98px) {
+  .project-head .d-flex.flex-wrap.gap-2 {
+    width: 100%;
+  }
+
+  .project-head .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+/* Подсказки details */
+details.ra-hint > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+details.ra-hint > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.ra-hint > summary::before {
+  content: "";
+  display: inline-block;
+  width: 0.35em;
+  height: 0.35em;
+  margin-right: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  vertical-align: 0.15em;
+  opacity: 0.65;
+}
+
+details[open].ra-hint > summary::before {
+  transform: rotate(45deg);
+  vertical-align: 0.05em;
+}
+
+/* Таблица результатов: читаемость на узком экране */
+@media (max-width: 575.98px) {
+  .table-responsive .table {
+    font-size: 0.8125rem;
+  }
+
+  /* Текст отзывов — перенос строк и меньше «ломаных» слов */
+  #resultsTable td:last-child {
+    white-space: normal;
+    word-break: break-word;
+    min-width: 70vw;
+    line-height: 1.35;
+  }
+
+  .page-toolbar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  #tablePagerTop .d-flex.gap-2,
+  .card-footer .d-flex.gap-2 {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  #tablePagerTop .btn,
+  .card-footer .btn {
+    flex: 1;
+  }
+}
+
+/* Мобильный список проектов со свайпом */
+.ra-swipe-item {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--ra-border);
+  border-radius: var(--ra-radius);
+  background: var(--ra-surface);
+  box-shadow: var(--ra-shadow);
+  --ra-swipe-x: 0px;
+}
+
+.ra-swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(220, 53, 69, 0.08);
+  border-left: 1px solid rgba(220, 53, 69, 0.18);
+}
+
+.ra-swipe-content {
+  padding: 0.85rem 0.9rem;
+  transform: translateX(var(--ra-swipe-x));
+  transition: transform 160ms ease;
+  touch-action: pan-y;
+}
+
+.ra-swipe-item.is-open .ra-swipe-content {
+  transition: transform 220ms ease;
+}
+
+/* Канвасы графиков — не выходят за контейнер */
+canvas {
+  max-width: 100%;
+}

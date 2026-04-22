@@ -1,0 +1,23 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: review_analytics
+      TOKEN_LIMIT_T: "100000"
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:
