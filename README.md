@@ -24,12 +24,15 @@ uvicorn app.main:app --reload --port 8000
 
 ## Docker Compose
 
+Скопируйте `.env.example` в `.env` и задайте как минимум `OPENAI_API_KEY`, `MONGO_INITDB_ROOT_USERNAME` и `MONGO_INITDB_ROOT_PASSWORD`.
+
 ```bash
-export OPENAI_API_KEY=sk-...
 docker compose up --build
 ```
 
-Приложение: http://127.0.0.1:8000 · MongoDB: `localhost:27017`.
+Приложение: http://127.0.0.1/ (хостовый порт **80** → контейнер слушает **8000**). Порт MongoDB **не пробрасывается** наружу: к базе с хоста не подключиться, только сервис `web` внутри сети Compose.
+
+Если том `mongo_data` уже создан **без** авторизации, переменные `MONGO_INITDB_*` на существующих данных не сработают — нужен бэкап, удаление тома и новый `docker compose up`.
 
 ## API
 
@@ -54,10 +57,12 @@ docker compose up --build
 
 | Переменная | Назначение |
 |------------|------------|
-| `MONGODB_URI` | URI MongoDB |
+| `MONGODB_URI` | URI MongoDB (локальный запуск; в Compose задаётся из `MONGO_INITDB_*`) |
 | `MONGODB_DB` | Имя базы |
+| `MONGO_INITDB_ROOT_USERNAME` | Root-пользователь Mongo (только Docker Compose, при пустом томе) |
+| `MONGO_INITDB_ROOT_PASSWORD` | Пароль root Mongo (только Docker Compose) |
 | `OPENAI_API_KEY` | Ключ API |
-| `OPENAI_MODEL` | Модель (по умолчанию `gpt-4o-mini`) |
+| `OPENAI_MODEL` | Модель (по умолчанию `gpt-5.4-nano`) |
 | `TOKEN_LIMIT_T` | Порог суммарных токенов по текстовой колонке |
 | `MAX_UPLOAD_MB` | Лимит размера файла |
 
