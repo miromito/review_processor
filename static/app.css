@@ -144,6 +144,95 @@ a {
   gap: 0.75rem 1rem;
 }
 
+.projects-search .form-control {
+  max-width: min(100%, 28rem);
+}
+
+/* Дашборд: одинаковая высота колонок и выравнивание блока «подсказка + график» */
+@media (min-width: 992px) {
+  .ra-row-sentiment .ra-chart-prelude {
+    min-height: 12.5rem;
+  }
+
+  .ra-row-topics .ra-chart-prelude {
+    min-height: 10.25rem;
+  }
+
+  /* Пирог и блок инсайта — одна «средняя» высота области контента */
+  .ra-row-sentiment .chart-stage--sentiment {
+    flex: 0 0 auto;
+    height: 260px;
+    max-height: 260px;
+  }
+
+  .ra-row-sentiment .insight-body-shell--sentiment {
+    flex: 1 1 auto;
+    min-height: 260px;
+  }
+
+  .ra-row-sentiment .insight-body-text.insight-body-collapsed {
+    max-height: 15rem;
+  }
+}
+
+/* Узкий экран: тот же принцип без фиксированной сетки колонок */
+@media (max-width: 991.98px) {
+  .ra-row-sentiment .chart-stage--sentiment {
+    flex: 0 0 auto;
+    height: 240px;
+    max-height: 240px;
+  }
+
+  .ra-row-sentiment .insight-body-shell--sentiment {
+    min-height: 240px;
+  }
+
+  .ra-row-sentiment .insight-body-text.insight-body-collapsed {
+    max-height: 13rem;
+  }
+}
+
+.chart-stage--sentiment {
+  position: relative;
+  width: 100%;
+}
+
+.insight-body-text {
+  position: relative;
+  transition: max-height 0.2s ease;
+}
+
+.insight-body-text.insight-body-collapsed {
+  max-height: 8rem;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.insight-body-text.insight-body-collapsed:focus-visible {
+  outline: 2px solid rgba(15, 39, 68, 0.35);
+  outline-offset: 2px;
+}
+
+.insight-body-text.insight-body-collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.25rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--ra-surface-2));
+}
+
+.insight-body-text.insight-body-expanded::after {
+  display: none;
+}
+
+.insight-body-text.insight-body-expanded {
+  cursor: default;
+  max-height: none;
+}
+
 .card {
   border: 1px solid var(--ra-border);
   box-shadow: var(--ra-shadow);
@@ -294,18 +383,45 @@ details[open].ra-hint > summary::before {
   vertical-align: 0.05em;
 }
 
+/* Таблица результатов: текст отзыва — свёрнут по высоте, полный текст по кнопке */
+#resultsTable .ra-review-text-cell {
+  vertical-align: top;
+  min-width: 12rem;
+  max-width: 42rem;
+}
+
+#resultsTable .ra-review-text-body {
+  position: relative;
+  line-height: 1.35;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+#resultsTable .ra-review-text-body.ra-review-text-collapsed {
+  max-height: 4.5rem;
+  overflow: hidden;
+}
+
+#resultsTable .ra-review-text-body.ra-review-text-collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.35rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--ra-surface));
+}
+
 /* Таблица результатов: читаемость на узком экране */
 @media (max-width: 575.98px) {
   .table-responsive .table {
     font-size: 0.8125rem;
   }
 
-  /* Текст отзывов — перенос строк и меньше «ломаных» слов */
-  #resultsTable td:last-child {
-    white-space: normal;
-    word-break: break-word;
+  #resultsTable .ra-review-text-cell {
     min-width: 70vw;
-    line-height: 1.35;
+    max-width: none;
   }
 
   .page-toolbar .btn {

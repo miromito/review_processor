@@ -2,11 +2,15 @@
   const tbody = document.getElementById("projectsBody");
   const mobileList = document.getElementById("projectsListMobile");
   const alertBox = document.getElementById("listAlert");
+  const searchWrap = document.getElementById("projectsSearchWrap");
+  const searchInput = document.getElementById("projectSearch");
+
+  let cachedProjects = [];
 
   const phaseRu = {
     awaiting_file: "1 — нужен файл",
     awaiting_mapping: "2 — настройка колонок",
-    awaiting_analysis: "3 — запуск анализа",
+    awaiting_analysis: "Готов к анализу",
     analyzing: "Анализ…",
     complete: "Готово",
     error: "Ошибка",
@@ -49,28 +53,20 @@
       </div>`;
   }
 
-  async function load() {
-    alertBox.innerHTML = "";
-    try {
-      const res = await fetch("/api/projects");
-      const data = await res.json();
-      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
-      tbody.innerHTML = "";
-      if (mobileList) mobileList.innerHTML = "";
-      if (!data.length) {
-        tbody.innerHTML =
-          '<tr><td colspan="6" class="text-muted p-4">Пока нет проектов. Создайте первый на странице «Новый проект».</td></tr>';
-        if (mobileList) {
-          mobileList.innerHTML =
-            '<div class="list-group-item text-muted py-4">Пока нет проектов. Создайте первый на странице «Новый проект».</div>';
-        }
-        return;
-      }
-      for (const p of data) {
-        const tr = document.createElement("tr");
-        const dt = formatDt(p.updated_at);
-        const delLabel = `Удалить проект ${p.name || p.id}`;
-        tr.innerHTML = `
+  function filterByName(projects, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) => String(p.name || "").toLowerCase().includes(q));
+  }
+
+  function renderProjects(projects) {
+    tbody.innerHTML = "";
+    if (mobileList) mobileList.innerHTML = "";
+    for (const p of projects) {
+      const tr = document.createElement("tr");
+      const dt = formatDt(p.updated_at);
+      const delLabel = `Удалить проект ${p.name || p.id}`;
+      tr.innerHTML = `
           <td><a href="/projects/${esc(p.id)}">${esc(p.name)}</a></td>
           <td><span class="badge bg-secondary">${esc(phaseRu[p.phase] || p.phase)}</span></td>
           <td>${esc(p.filename || "—")}</td>
@@ -81,18 +77,60 @@
             <button type="button" class="btn btn-sm btn-outline-danger ms-1" data-action="delete-project"
                     data-project-id="${esc(p.id)}" aria-label="${esc(delLabel)}">Удалить</button>
           </td>`;
-        tbody.append(tr);
-        if (mobileList) {
-          const wrap = document.createElement("div");
-          wrap.className = "list-group-item p-0 border-0";
-          wrap.innerHTML = renderMobileItem(p);
-          mobileList.append(wrap.firstElementChild);
-        }
+      tbody.append(tr);
+      if (mobileList) {
+        const wrap = document.createElement("div");
+        wrap.className = "list-group-item p-0 border-0";
+        wrap.innerHTML = renderMobileItem(p);
+        mobileList.append(wrap.firstElementChild);
       }
+    }
+  }
+
+  function refreshListView() {
+    if (!cachedProjects.length) {
+      if (searchWrap) searchWrap.classList.add("d-none");
+      if (searchInput) searchInput.value = "";
+      tbody.innerHTML =
+        '<tr><td colspan="6" class="text-muted p-4">Пока нет проектов. Создайте первый на странице «Новый проект».</td></tr>';
+      if (mobileList) {
+        mobileList.innerHTML =
+          '<div class="list-group-item text-muted py-4">Пока нет проектов. Создайте первый на странице «Новый проект».</div>';
+      }
+      return;
+    }
+    if (searchWrap) searchWrap.classList.remove("d-none");
+    const q = searchInput ? searchInput.value : "";
+    const filtered = filterByName(cachedProjects, q);
+    if (!filtered.length) {
+      const hint = q.trim()
+        ? `Ничего не найдено по запросу «${esc(q.trim())}».`
+        : "Ничего не найдено.";
+      tbody.innerHTML = `<tr><td colspan="6" class="text-muted p-4">${hint}</td></tr>`;
+      if (mobileList) {
+        mobileList.innerHTML = `<div class="list-group-item text-muted py-4">${hint}</div>`;
+      }
+      return;
+    }
+    renderProjects(filtered);
+  }
+
+  async function load() {
+    alertBox.innerHTML = "";
+    try {
+      const res = await fetch("/api/projects");
+      const data = await res.json();
+      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+      cachedProjects = Array.isArray(data) ? data : [];
+      refreshListView();
     } catch (e) {
       alertBox.innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
     }
   }
+
+  searchInput?.addEventListener("input", () => {
+    refreshListView();
+  });
 
   async function handleDeleteClick(btn) {
     const id = btn.getAttribute("data-project-id");

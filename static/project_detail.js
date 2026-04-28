@@ -10,7 +10,7 @@
   const phaseRu = {
     awaiting_file: "Фаза 1 — загрузите файл с отзывами",
     awaiting_mapping: "Фаза 2 — укажите соответствие колонок",
-    awaiting_analysis: "Фаза 3 — запустите анализ",
+    awaiting_analysis: "Конфигурация сохранена — можно запустить анализ",
     analyzing: "Выполняется анализ…",
     complete: "Проект проанализирован — доступны графики и таблица",
     error: "Ошибка анализа — можно исправить и запустить снова",
@@ -326,17 +326,102 @@
     if (topicSel) fillSelectOptions(topicSel, facets.topics_any || [], true);
   }
 
+  function resetInsightExpandUi(bodyEl, btnEl) {
+    bodyEl.classList.remove("insight-body-collapsed", "insight-body-expanded");
+    bodyEl.style.cursor = "";
+    bodyEl.removeAttribute("tabindex");
+    bodyEl.removeAttribute("role");
+    bodyEl.removeAttribute("aria-label");
+    bodyEl.onclick = null;
+    bodyEl.onkeydown = null;
+    if (btnEl) {
+      btnEl.classList.add("d-none");
+      btnEl.setAttribute("aria-expanded", "false");
+      btnEl.textContent = "Показать полностью";
+      btnEl.setAttribute("aria-label", "Показать полный текст инсайта");
+      btnEl.onclick = null;
+    }
+  }
+
+  function setupInsightExpand(bodyEl, btnEl) {
+    if (!btnEl) return;
+    resetInsightExpandUi(bodyEl, btnEl);
+
+    function wireCollapsedInteractions() {
+      bodyEl.style.cursor = "pointer";
+      bodyEl.setAttribute("tabindex", "0");
+      bodyEl.setAttribute("role", "button");
+      bodyEl.setAttribute("aria-label", "Развернуть полный текст инсайта");
+      bodyEl.onclick = () => expand();
+      bodyEl.onkeydown = (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          expand();
+        }
+      };
+    }
+
+    function expand() {
+      bodyEl.classList.remove("insight-body-collapsed");
+      bodyEl.classList.add("insight-body-expanded");
+      bodyEl.style.cursor = "default";
+      bodyEl.removeAttribute("tabindex");
+      bodyEl.removeAttribute("role");
+      bodyEl.removeAttribute("aria-label");
+      bodyEl.onclick = null;
+      bodyEl.onkeydown = null;
+      btnEl.setAttribute("aria-expanded", "true");
+      btnEl.textContent = "Свернуть";
+      btnEl.setAttribute("aria-label", "Свернуть текст инсайта");
+    }
+
+    function collapse() {
+      bodyEl.classList.add("insight-body-collapsed");
+      bodyEl.classList.remove("insight-body-expanded");
+      btnEl.setAttribute("aria-expanded", "false");
+      btnEl.textContent = "Показать полностью";
+      btnEl.setAttribute("aria-label", "Показать полный текст инсайта");
+      wireCollapsedInteractions();
+    }
+
+    function toggle() {
+      if (bodyEl.classList.contains("insight-body-expanded")) collapse();
+      else expand();
+    }
+
+    bodyEl.classList.add("insight-body-collapsed");
+    bodyEl.classList.remove("insight-body-expanded");
+
+    globalThis.requestAnimationFrame(() => {
+      const overflow = bodyEl.scrollHeight > bodyEl.clientHeight + 2;
+      if (!overflow) {
+        resetInsightExpandUi(bodyEl, btnEl);
+        return;
+      }
+      btnEl.classList.remove("d-none");
+      btnEl.setAttribute("aria-expanded", "false");
+      wireCollapsedInteractions();
+      btnEl.onclick = (e) => {
+        e.preventDefault();
+        toggle();
+      };
+    });
+  }
+
   async function loadInsightDisplay() {
     const meta = document.getElementById("insightMeta");
     const body = document.getElementById("insightBody");
+    const toggleBtn = document.getElementById("insightToggleBtn");
     if (!meta || !body) return;
     meta.textContent = "Загрузка инсайта…";
+    if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
     try {
       const res = await fetch(`/api/projects/${projectId}/insight`);
       const data = await res.json();
       if (!res.ok) {
         meta.textContent = typeof data.detail === "string" ? data.detail : "Не удалось загрузить инсайт";
         body.textContent = "";
+        if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
         return;
       }
       const text = (data.insight || "").trim();
@@ -351,8 +436,11 @@
       body.textContent =
         text ||
         "Инсайт не сохранён. Обычно он создаётся в конце анализа. Проверьте, что задан OPENAI_API_KEY, и при необходимости запустите анализ ещё раз или смотрите логи сервера.";
+      if (toggleBtn) setupInsightExpand(body, toggleBtn);
     } catch (e) {
       meta.textContent = esc(e.message);
+      body.textContent = "";
+      if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
     }
   }
 
@@ -367,9 +455,14 @@
 
     s1.classList.toggle("d-none", p.phase !== "awaiting_file");
     s2.classList.toggle("d-none", p.phase !== "awaiting_mapping");
-    const showAnalyze =
-      p.phase === "awaiting_analysis" || p.phase === "error" || p.phase === "analyzing" || p.phase === "complete";
-    s3.classList.toggle("d-none", !showAnalyze || p.phase === "complete");
+    const showAnalyzePanel =
+      p.phase === "awaiting_analysis" || p.phase === "error" || p.phase === "analyzing";
+    s3.classList.toggle("d-none", !showAnalyzePanel);
+    const btnAnalyzeEl = document.getElementById("btnAnalyze");
+    if (btnAnalyzeEl) {
+      const showRetryAnalyze = p.phase === "awaiting_analysis" || p.phase === "error";
+      btnAnalyzeEl.classList.toggle("d-none", !showRetryAnalyze);
+    }
     done.classList.toggle("d-none", p.phase !== "complete");
 
     if (p.phase === "awaiting_mapping" && p.columns?.length) {
@@ -947,6 +1040,55 @@
     }
   }
 
+  function syncExpandAllReviewsLabel() {
+    const master = document.getElementById("btnReviewsExpandAll");
+    if (!master) return;
+    const expandableBodies = [];
+    for (const tr of document.querySelectorAll("#resultsTable tbody tr")) {
+      const body = tr.querySelector(".ra-review-text-body");
+      const btn = tr.querySelector(".ra-row-expand-btn");
+      if (!body || !btn || btn.classList.contains("d-none")) continue;
+      expandableBodies.push(body);
+    }
+    if (!expandableBodies.length) {
+      master.disabled = true;
+      master.textContent = "Развернуть все";
+      master.setAttribute("aria-label", "Развернуть или свернуть тексты всех отзывов на странице");
+      return;
+    }
+    master.disabled = false;
+    const allExpanded = expandableBodies.every((body) => !body.classList.contains("ra-review-text-collapsed"));
+    master.textContent = allExpanded ? "Свернуть все" : "Развернуть все";
+    master.setAttribute(
+      "aria-label",
+      allExpanded ? "Свернуть тексты всех отзывов на странице" : "Развернуть тексты всех отзывов на странице",
+    );
+  }
+
+  function appendReviewTextCell(tr, rawText) {
+    const td = document.createElement("td");
+    td.className = "ra-review-text-cell";
+    const textBody = document.createElement("div");
+    textBody.className = "ra-review-text-body ra-review-text-collapsed text-break";
+    textBody.textContent = rawText ?? "";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-outline-secondary btn-sm mt-1 ra-row-expand-btn";
+    btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-label", "Развернуть текст отзыва");
+    btn.textContent = "Развернуть";
+    td.append(textBody, btn);
+    btn.addEventListener("click", () => {
+      textBody.classList.toggle("ra-review-text-collapsed");
+      const collapsed = textBody.classList.contains("ra-review-text-collapsed");
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+      btn.setAttribute("aria-expanded", String(!collapsed));
+      btn.setAttribute("aria-label", collapsed ? "Развернуть текст отзыва" : "Свернуть текст отзыва");
+      syncExpandAllReviewsLabel();
+    });
+    tr.append(td);
+  }
+
   function buildResultsQuery() {
     const p = new URLSearchParams();
     p.set("skip", String(tableSkip));
@@ -985,6 +1127,8 @@
     const page = await res.json();
     if (!res.ok) {
       metaText("Не удалось загрузить таблицу.");
+      tbody.innerHTML = "";
+      syncExpandAllReviewsLabel();
       return;
     }
     const rows = page.items || [];
@@ -1005,11 +1149,25 @@
       const t2 = t[2] != null ? esc(t[2]) : "—";
       const fd = r.filters || {};
       const filterCells = tableFilterColumns.map((c) => `<td>${esc(fd[c] != null ? String(fd[c]) : "—")}</td>`).join("");
-      tr.innerHTML = `<td>${r.row_index}</td><td>${esc(r.sentiment || "—")}</td><td>${t0}</td><td>${t1}</td><td>${t2}</td>${filterCells}<td>${esc(
-        (r.text || "").slice(0, 320),
-      )}</td>`;
+      tr.innerHTML = `<td>${r.row_index}</td><td>${esc(r.sentiment || "—")}</td><td>${t0}</td><td>${t1}</td><td>${t2}</td>${filterCells}`;
+      appendReviewTextCell(tr, r.text ?? "");
       tbody.append(tr);
     }
+    globalThis.requestAnimationFrame(() => {
+      globalThis.requestAnimationFrame(() => {
+        for (const row of tbody.querySelectorAll("tr")) {
+          const body = row.querySelector(".ra-review-text-body");
+          const btn = row.querySelector(".ra-row-expand-btn");
+          if (!body || !btn) continue;
+          const needsExpand = body.scrollHeight > body.clientHeight + 1;
+          if (!needsExpand) {
+            body.classList.remove("ra-review-text-collapsed");
+            btn.classList.add("d-none");
+          }
+        }
+        syncExpandAllReviewsLabel();
+      });
+    });
   }
 
   document.getElementById("btnUpload").addEventListener("click", async () => {
@@ -1037,7 +1195,9 @@
     const dateRaw = document.getElementById("dateColumn").value;
     const date_column = dateRaw || null;
     const filter_columns = Array.from(document.getElementById("filterColumns").selectedOptions).map((o) => o.value);
-    show(document.getElementById("mappingAlert"), "Сохранение…", "secondary");
+    const btnMap = document.getElementById("btnMapping");
+    show(document.getElementById("mappingAlert"), "Сохранение и запуск анализа…", "secondary");
+    btnMap.disabled = true;
     try {
       const res = await fetch(`/api/projects/${projectId}/mapping`, {
         method: "PATCH",
@@ -1051,8 +1211,11 @@
         : `В лимит входят первые ${data.k_rows} из ${data.m_rows} строк (токенов: ${data.tokens_used_for_k}).`;
       show(document.getElementById("mappingAlert"), msg, data.full_file_fits ? "success" : "warning");
       await loadProject();
+      await runAnalyzeFlow();
     } catch (e) {
       show(document.getElementById("mappingAlert"), esc(e.message), "danger");
+    } finally {
+      btnMap.disabled = false;
     }
   });
 
@@ -1116,6 +1279,33 @@
   document.getElementById("btnTableNext")?.addEventListener("click", goTableNext);
   document.getElementById("btnTablePrevTop")?.addEventListener("click", goTablePrev);
   document.getElementById("btnTableNextTop")?.addEventListener("click", goTableNext);
+
+  document.getElementById("btnReviewsExpandAll")?.addEventListener("click", () => {
+    const expandable = [];
+    for (const tr of document.querySelectorAll("#resultsTable tbody tr")) {
+      const body = tr.querySelector(".ra-review-text-body");
+      const btn = tr.querySelector(".ra-row-expand-btn");
+      if (!body || !btn || btn.classList.contains("d-none")) continue;
+      expandable.push({ body, btn });
+    }
+    if (!expandable.length) return;
+    const allExpanded = expandable.every(({ body }) => !body.classList.contains("ra-review-text-collapsed"));
+    const collapseAll = allExpanded;
+    for (const { body, btn } of expandable) {
+      if (collapseAll) {
+        body.classList.add("ra-review-text-collapsed");
+        btn.textContent = "Развернуть";
+        btn.setAttribute("aria-expanded", "false");
+        btn.setAttribute("aria-label", "Развернуть текст отзыва");
+      } else {
+        body.classList.remove("ra-review-text-collapsed");
+        btn.textContent = "Свернуть";
+        btn.setAttribute("aria-expanded", "true");
+        btn.setAttribute("aria-label", "Свернуть текст отзыва");
+      }
+    }
+    syncExpandAllReviewsLabel();
+  });
 
   document.getElementById("btnChartFiltersApply")?.addEventListener("click", () => {
     loadDashboard();
