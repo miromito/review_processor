@@ -22,4 +22,5 @@ jobs:
           script: |
             cd /var/www/app/review_processor
             git pull origin main
+            docker compose down
             docker compose up -d --build
