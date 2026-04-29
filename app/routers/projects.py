@@ -355,7 +355,7 @@ async def scatter_points(
     request: Request,
     date_from: str | None = None,
     date_to: str | None = None,
-    chart_topic: str | None = Query(None, description="Подстрока в любой из тем отзыва"),
+    chart_topic: str | None = Query(None, description="Поиск по вхождению в любую из тем отзыва"),
     group_by: str = Query("day", description="Группировка по времени: day, week, month, quarter, year"),
 ) -> ScatterResponse:
     _oid(project_id)
@@ -394,7 +394,7 @@ async def reviews_by_date(
     request: Request,
     date: Annotated[str, Query(description="Дата начала (YYYY-MM-DD); с date_to — диапазон включительно")],
     date_to: str | None = Query(None, description="Конец диапазона YYYY-MM-DD, включительно"),
-    chart_topic: str | None = Query(None, description="Подстрока в любой из тем"),
+    chart_topic: str | None = Query(None, description="Поиск по вхождению в любую из тем"),
 ) -> ReviewsByDateResponse:
     _oid(project_id)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
@@ -567,7 +567,7 @@ async def project_dashboard(
     request: Request,
     date_from: str | None = None,
     date_to: str | None = None,
-    chart_topic: str | None = Query(None, description="Подстрока в любой из тем отзыва"),
+    chart_topic: str | None = Query(None, description="Поиск по вхождению в любую из тем отзыва"),
 ) -> DashboardResponse:
     _oid(project_id)
     project = await projects_coll(db).find_one({"_id": ObjectId(project_id)})

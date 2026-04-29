@@ -15,7 +15,7 @@ def canonical_sentiment_key(raw: Any) -> str:
         return "positive"
     if s in ("negative", "негатив"):
         return "negative"
-    if s in ("neutral", "нейтрал", "нейтральный"):
+    if s in ("neutral", "нейтрал", "нейтраль", "нейтральный"):
         return "neutral"
     return "unknown"
 

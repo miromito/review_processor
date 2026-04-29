@@ -21,6 +21,20 @@ services:
 
   web:
     build: .
+    # Монтируем код: UVicorn --reload перезапускает воркер при правках. Mongo в отдельном
+    # контейнере остаётся запущенным; при необходимости только web: docker compose restart web
+    volumes:
+      - .:/app
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
     ports:
       - "8000:8000"
     environment:
@@ -29,6 +43,11 @@ services:
       TOKEN_LIMIT_T: "100000"
       OPENAI_MODEL: gpt-5.4-nano
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AUTH_USERNAME: ${AUTH_USERNAME:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       mongo:
         condition: service_healthy

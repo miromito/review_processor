@@ -16,7 +16,7 @@ def _norm_sentiment_filter(raw: str | None) -> str | None:
         return "positive"
     if s in ("negative", "негатив"):
         return "negative"
-    if s in ("neutral", "нейтрал", "нейтральный"):
+    if s in ("neutral", "нейтрал", "нейтраль", "нейтральный"):
         return "neutral"
     if s in ("unknown", "неизвестно", "прочее"):
         return "unknown"

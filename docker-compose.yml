@@ -27,6 +27,11 @@ services:
       TOKEN_LIMIT_T: "100000"
       OPENAI_MODEL: gpt-5.4-nano
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AUTH_USERNAME: ${AUTH_USERNAME:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       mongo:
         condition: service_healthy

@@ -1,5 +1,23 @@
 (() => {
   const projectId = globalThis.__PROJECT_ID__;
+  const ANALYZE_SESSION_KEY = `ra_project_analyze_${projectId}`;
+
+  function setAnalyzeSessionFlag() {
+    try {
+      sessionStorage.setItem(ANALYZE_SESSION_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function clearAnalyzeSessionFlag() {
+    try {
+      sessionStorage.removeItem(ANALYZE_SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const titleEl = document.getElementById("projectTitle");
   const badgeEl = document.getElementById("phaseBadge");
   const s1 = document.getElementById("phase1");
@@ -16,7 +34,9 @@
     error: "Ошибка анализа — можно исправить и запустить снова",
   };
 
-  const TABLE_PAGE_SIZE = 50;
+  const TABLE_PAGE_SIZE = 10;
+  /** Ниже этого порога текст показывается целиком, без свёртки. */
+  const REVIEW_COLLAPSE_MIN_CHARS = 500;
   let tableSkip = 0;
   let lastTableTotal = 0;
   let tableFacetsLoaded = false;
@@ -26,9 +46,16 @@
   /** Агрегаты по (дата, тональность) для пузырькового графика */
   let scatterBubbles = [];
 
-  const SENTIMENT_AXIS_LABELS = ["Негатив", "Нейтрал", "Позитив", "Прочее"];
+  /** Подписи в интерфейсе (в БД остаётся positive | negative | neutral | unknown). */
+  const SENTIMENT_RU = {
+    positive: "Позитив",
+    negative: "Негатив",
+    neutral: "Нейтраль",
+    unknown: "Прочее",
+  };
+  const SENTIMENT_AXIS_LABELS = [SENTIMENT_RU.negative, SENTIMENT_RU.neutral, SENTIMENT_RU.positive, SENTIMENT_RU.unknown];
   /** Только три тональности на пузырьковом графике (без «Прочее»). */
-  const SCATTER_Y_LABELS = ["Негатив", "Нейтрал", "Позитив"];
+  const SCATTER_Y_LABELS = [SENTIMENT_RU.negative, SENTIMENT_RU.neutral, SENTIMENT_RU.positive];
   const SCATTER_Y_MIN = -0.52;
   const SCATTER_Y_MAX = 2.52;
   /** Порядок сегментов «пирога» = порядок цветов (негатив всегда красный) */
@@ -95,8 +122,31 @@
       .toLowerCase();
     if (s === "positive" || s === "позитив") return "positive";
     if (s === "negative" || s === "негатив") return "negative";
-    if (s === "neutral" || s === "нейтрал" || s === "нейтральный") return "neutral";
+    if (s === "neutral" || s === "нейтрал" || s === "нейтраль" || s === "нейтральный") return "neutral";
     return "unknown";
+  }
+
+  function sentimentLabelForUi(raw) {
+    const t = String(raw ?? "").trim();
+    if (!t || t === "—") return "—";
+    return sentimentDisplayRu(normalizeSentiment(t));
+  }
+
+  function sentimentPillHtml(raw) {
+    const d = sentimentLabelForUi(raw);
+    if (d === "—") {
+      return `<span class="ra-pill ra-pill--sentiment ra-pill--muted">${esc(d)}</span>`;
+    }
+    const k = normalizeSentiment(String(raw));
+    const tone =
+      k === "positive"
+        ? "positive"
+        : k === "negative"
+          ? "negative"
+          : k === "neutral"
+            ? "neutral"
+            : "other";
+    return `<span class="ra-pill ra-pill--sentiment ra-pill--${tone}">${esc(d)}</span>`;
   }
 
   function sentimentYIndex(sentKey) {
@@ -232,6 +282,34 @@
 
   function show(el, html, kind) {
     el.innerHTML = html ? `<div class="alert alert-${kind || "info"}">${html}</div>` : "";
+  }
+
+  const _RA_SAVED_HTML = "data-ra-button-html";
+
+  function setButtonLoading(btn, isLoading, loadingText) {
+    if (!btn) {
+      return;
+    }
+    const msg = loadingText || "Обработка…";
+    if (isLoading) {
+      if (!btn.getAttribute(_RA_SAVED_HTML)) {
+        btn.setAttribute(_RA_SAVED_HTML, btn.innerHTML);
+      }
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      btn.innerHTML = `<span class="d-inline-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span aria-live="polite">${esc(msg)}</span>
+      </span>`;
+    } else {
+      const saved = btn.getAttribute(_RA_SAVED_HTML);
+      if (saved) {
+        btn.innerHTML = saved;
+        btn.removeAttribute(_RA_SAVED_HTML);
+      }
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+    }
   }
 
   function esc(s) {
@@ -413,14 +491,15 @@
     const body = document.getElementById("insightBody");
     const toggleBtn = document.getElementById("insightToggleBtn");
     if (!meta || !body) return;
-    meta.textContent = "Загрузка инсайта…";
+    meta.textContent = "Получение текста…";
     if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
     try {
       const res = await fetch(`/api/projects/${projectId}/insight`);
       const data = await res.json();
       if (!res.ok) {
-        meta.textContent = typeof data.detail === "string" ? data.detail : "Не удалось загрузить инсайт";
-        body.textContent = "";
+        const errMsg = typeof data.detail === "string" ? data.detail : "Текст заключения не получен.";
+        meta.textContent = "";
+        body.textContent = errMsg;
         if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
         return;
       }
@@ -428,18 +507,18 @@
       if (data.generated_at) {
         const d = new Date(data.generated_at);
         meta.textContent = Number.isFinite(d.getTime())
-          ? `Сгенерировано автоматически: ${d.toLocaleString("ru-RU")}`
+          ? `Дата и время формирования (автоматически): ${d.toLocaleString("ru-RU")}`
           : "";
       } else {
         meta.textContent = "";
       }
       body.textContent =
         text ||
-        "Инсайт не сохранён. Обычно он создаётся в конце анализа. Проверьте, что задан OPENAI_API_KEY, и при необходимости запустите анализ ещё раз или смотрите логи сервера.";
+        "Заключение отсутствует. Оно формируется по завершении анализа. Проверьте наличие ключа API и, при необходимости, повторите анализ или обратитесь к журналу сервера.";
       if (toggleBtn) setupInsightExpand(body, toggleBtn);
     } catch (e) {
-      meta.textContent = esc(e.message);
-      body.textContent = "";
+      meta.textContent = "";
+      body.textContent = esc(e.message);
       if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
     }
   }
@@ -468,8 +547,11 @@
     if (p.phase === "awaiting_mapping" && p.columns?.length) {
       fillSelects(p.columns);
     }
+    const jobSt = document.getElementById("jobStatus");
+    jobSt.textContent = "";
+    jobSt.innerHTML = "";
     if (p.phase === "error" && p.error_message) {
-      show(document.getElementById("jobStatus"), esc(p.error_message), "danger");
+      show(jobSt, esc(p.error_message), "danger");
     }
   }
 
@@ -477,6 +559,21 @@
     const res = await fetch(`/api/projects/${projectId}`);
     const p = await res.json();
     if (!res.ok) throw new Error(typeof p.detail === "string" ? p.detail : JSON.stringify(p.detail));
+    if (p.phase !== "analyzing") {
+      clearAnalyzeSessionFlag();
+    }
+    if (p.phase === "analyzing") {
+      let allow = false;
+      try {
+        allow = sessionStorage.getItem(ANALYZE_SESSION_KEY) === "1";
+      } catch {
+        allow = false;
+      }
+      if (!allow) {
+        globalThis.location.replace("/");
+        return p;
+      }
+    }
     applyPhase(p);
     if (p.phase === "analyzing" && p.last_job_id) {
       try {
@@ -496,26 +593,26 @@
     return p;
   }
 
-  async function pollJob(jobId) {
+  function setJobStatusPolling() {
     const statusEl = document.getElementById("jobStatus");
+    statusEl.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2 ra-js-analyze-poll" role="status" aria-live="polite" aria-atomic="true">
+      <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+      <span class="ra-js-analyze-poll-text">Анализ выполняется, пожалуйста подождите…</span>
+    </div>`;
+  }
+
+  async function pollJob(jobId) {
+    setJobStatusPolling();
     for (let i = 0; i < 180; i++) {
       const res = await fetch(`/api/projects/jobs/${jobId}`);
       const j = await res.json();
       if (!res.ok) throw new Error(j.detail || "Ошибка статуса");
-      statusEl.textContent = `Статус: ${j.status}`;
       if (j.status === "completed") return;
       if (j.status === "failed") throw new Error(j.error_message || "Ошибка анализа");
       await new Promise((r) => setTimeout(r, 1500));
     }
     throw new Error("Превышено время ожидания анализа");
   }
-
-  const SENTIMENT_LABEL_RU = {
-    positive: "Позитив",
-    negative: "Негатив",
-    neutral: "Нейтрал",
-    unknown: "Прочее",
-  };
 
   /** Доли % для графика: скользящее среднее по «сырым» долям, затем округление; линии без лишних десятичных. */
   function timelinePctAndMA(timeline) {
@@ -548,7 +645,7 @@
     charts.sentiment = new Chart(ctxS, {
       type: "doughnut",
       data: {
-        labels: sk.map((k) => SENTIMENT_LABEL_RU[k] || k),
+        labels: sk.map((k) => SENTIMENT_RU[k] || k),
         datasets: [
           {
             data: sk.length ? sk.map((k) => sc[k]) : [1],
@@ -573,10 +670,10 @@
         data: {
           labels: sl.map((s) => s.topic),
           datasets: [
-            { label: "Позитив", data: sl.map((s) => s.positive), backgroundColor: "rgba(25,135,84,0.88)" },
-            { label: "Нейтрал", data: sl.map((s) => s.neutral), backgroundColor: "rgba(108,117,125,0.88)" },
-            { label: "Негатив", data: sl.map((s) => s.negative), backgroundColor: "rgba(220,53,69,0.88)" },
-            { label: "Прочее", data: sl.map((s) => s.unknown), backgroundColor: "rgba(253,126,20,0.75)" },
+            { label: SENTIMENT_RU.positive, data: sl.map((s) => s.positive), backgroundColor: "rgba(25,135,84,0.88)" },
+            { label: SENTIMENT_RU.neutral, data: sl.map((s) => s.neutral), backgroundColor: "rgba(108,117,125,0.88)" },
+            { label: SENTIMENT_RU.negative, data: sl.map((s) => s.negative), backgroundColor: "rgba(220,53,69,0.88)" },
+            { label: SENTIMENT_RU.unknown, data: sl.map((s) => s.unknown), backgroundColor: "rgba(253,126,20,0.75)" },
           ],
         },
         options: {
@@ -635,7 +732,7 @@
           labels: dates,
           datasets: [
             {
-              label: "Позитив",
+              label: SENTIMENT_RU.positive,
               data: d.timeline.map((x) => x.positive),
               borderColor: "rgb(25,135,84)",
               tension: 0.15,
@@ -644,7 +741,7 @@
               pointHitRadius: 16,
             },
             {
-              label: "Негатив",
+              label: SENTIMENT_RU.negative,
               data: d.timeline.map((x) => x.negative),
               borderColor: "rgb(220,53,69)",
               tension: 0.15,
@@ -653,7 +750,7 @@
               pointHitRadius: 16,
             },
             {
-              label: "Нейтрал",
+              label: SENTIMENT_RU.neutral,
               data: d.timeline.map((x) => x.neutral),
               borderColor: "rgb(108,117,125)",
               tension: 0.15,
@@ -797,7 +894,7 @@
           <h2 class="accordion-header h6 mb-0" id="${h}">
             <button class="accordion-button${i ? " collapsed" : ""}" type="button" data-bs-toggle="collapse"
                     data-bs-target="#${c}" aria-expanded="${i ? "false" : "true"}" aria-controls="${c}">
-              Строка ${r.row_index} · ${esc(r.sentiment || "—")} · ${esc(r.primary_topic || "—")}
+              Строка ${r.row_index} · ${esc(sentimentLabelForUi(r.sentiment))} · ${esc(r.primary_topic || "—")}
             </button>
           </h2>
           <div id="${c}" class="accordion-collapse collapse${i ? "" : " show"}" aria-labelledby="${h}" data-bs-parent="#${accId}">
@@ -982,13 +1079,15 @@
     });
   }
 
-  function fillSelectOptions(sel, values, withAll) {
+  function fillSelectOptions(sel, values, withAll, labelForValue) {
     const prev = sel.value;
     sel.innerHTML = "";
     if (withAll) sel.append(new Option("— все —", ""));
     for (const v of values) {
       if (v === undefined || v === null) continue;
-      sel.append(new Option(String(v), String(v)));
+      const val = String(v);
+      const text = labelForValue ? labelForValue(v) : val;
+      sel.append(new Option(text, val));
     }
     if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
   }
@@ -996,7 +1095,7 @@
   function rebuildTableHeaderForFilters(filterCols) {
     const tr = document.getElementById("resultsTableHeadRow");
     if (!tr) return;
-    while (tr.children.length > 6) tr.removeChild(tr.children[5]);
+    while (tr.children.length > 5) tr.removeChild(tr.children[4]);
     for (const col of filterCols) {
       const th = document.createElement("th");
       th.textContent = col;
@@ -1009,7 +1108,12 @@
     const res = await fetch(`/api/projects/${projectId}/results/facets`);
     const f = await res.json();
     if (!res.ok) return;
-    fillSelectOptions(document.getElementById("filterSentiment"), f.sentiments || [], true);
+    fillSelectOptions(
+      document.getElementById("filterSentiment"),
+      f.sentiments || [],
+      true,
+      (v) => SENTIMENT_RU[normalizeSentiment(String(v))] || String(v),
+    );
     fillSelectOptions(document.getElementById("filterTopic1"), f.topics_1 || [], true);
     fillSelectOptions(document.getElementById("filterTopic2"), f.topics_2 || [], true);
     fillSelectOptions(document.getElementById("filterTopic3"), f.topics_3 || [], true);
@@ -1032,7 +1136,7 @@
         inp.className = "form-control form-control-sm filter-col-input";
         inp.id = id;
         inp.dataset.col = col;
-        inp.placeholder = "Подстрока…";
+        inp.placeholder = "Введите значение";
         inp.setAttribute("aria-label", `Фильтр ${col}`);
         colDiv.append(lab, inp);
         wrap.append(colDiv);
@@ -1068,24 +1172,35 @@
   function appendReviewTextCell(tr, rawText) {
     const td = document.createElement("td");
     td.className = "ra-review-text-cell";
+    const text = String(rawText ?? "");
+    const longText = text.length > REVIEW_COLLAPSE_MIN_CHARS;
+    const stack = document.createElement("div");
+    stack.className = "ra-review-text-stack";
     const textBody = document.createElement("div");
-    textBody.className = "ra-review-text-body ra-review-text-collapsed text-break";
-    textBody.textContent = rawText ?? "";
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn-outline-secondary btn-sm mt-1 ra-row-expand-btn";
-    btn.setAttribute("aria-expanded", "false");
-    btn.setAttribute("aria-label", "Развернуть текст отзыва");
-    btn.textContent = "Развернуть";
-    td.append(textBody, btn);
-    btn.addEventListener("click", () => {
-      textBody.classList.toggle("ra-review-text-collapsed");
-      const collapsed = textBody.classList.contains("ra-review-text-collapsed");
-      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
-      btn.setAttribute("aria-expanded", String(!collapsed));
-      btn.setAttribute("aria-label", collapsed ? "Развернуть текст отзыва" : "Свернуть текст отзыва");
-      syncExpandAllReviewsLabel();
-    });
+    textBody.className = longText ? "ra-review-text-body ra-review-text-collapsed text-break" : "ra-review-text-body text-break";
+    textBody.textContent = text;
+    if (!longText) {
+      textBody.dataset.raShort = "1";
+    }
+    stack.append(textBody);
+    if (longText) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ra-row-expand-btn ra-review-expand-link";
+      btn.setAttribute("aria-expanded", "false");
+      btn.setAttribute("aria-label", "Развернуть текст отзыва");
+      btn.textContent = "Развернуть";
+      stack.append(btn);
+      btn.addEventListener("click", () => {
+        textBody.classList.toggle("ra-review-text-collapsed");
+        const collapsed = textBody.classList.contains("ra-review-text-collapsed");
+        btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        btn.setAttribute("aria-expanded", String(!collapsed));
+        btn.setAttribute("aria-label", collapsed ? "Развернуть текст отзыва" : "Свернуть текст отзыва");
+        syncExpandAllReviewsLabel();
+      });
+    }
+    td.append(stack);
     tr.append(td);
   }
 
@@ -1115,6 +1230,126 @@
     return p;
   }
 
+  function buildTablePageIndexList(totalPages, currentIndex) {
+    if (totalPages <= 1) {
+      return [0];
+    }
+    if (totalPages <= 9) {
+      return Array.from({ length: totalPages }, (_, i) => i);
+    }
+    const pages = new Set([0, totalPages - 1, currentIndex]);
+    for (let d = -1; d <= 1; d++) {
+      const p = currentIndex + d;
+      if (p >= 0 && p < totalPages) {
+        pages.add(p);
+      }
+    }
+    const sorted = [...pages].sort((a, b) => a - b);
+    /** @type {(number | "ellipsis")[]} */
+    const out = [];
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
+        out.push("ellipsis");
+      }
+      out.push(sorted[i]);
+    }
+    return out;
+  }
+
+  function fillTablePageButtons(el, items, currentIndex) {
+    if (!el) {
+      return;
+    }
+    el.textContent = "";
+    for (const item of items) {
+      if (item === "ellipsis") {
+        const span = document.createElement("span");
+        span.className = "ra-table-pager-ellipsis text-muted user-select-none px-1";
+        span.setAttribute("aria-hidden", "true");
+        span.textContent = "…";
+        el.append(span);
+        continue;
+      }
+      const num = item;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className =
+        num === currentIndex
+          ? "btn btn-primary btn-sm ra-table-page-btn"
+          : "btn btn-outline-secondary btn-sm ra-table-page-btn";
+      b.dataset.tablePage = String(num);
+      b.setAttribute("aria-label", `Страница ${num + 1}`);
+      if (num === currentIndex) {
+        b.setAttribute("aria-current", "page");
+      }
+      b.textContent = String(num + 1);
+      el.append(b);
+    }
+  }
+
+  function clearTablePager() {
+    for (const id of ["tablePagerTopPages", "tablePagerBottomPages"]) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = "";
+      }
+    }
+  }
+
+  function updateTablePagerUI(total, skip) {
+    if (total <= 0) {
+      clearTablePager();
+      for (const bid of ["btnTablePrev", "btnTablePrevTop", "btnTableNext", "btnTableNextTop"]) {
+        const b = document.getElementById(bid);
+        if (b) {
+          b.disabled = true;
+        }
+      }
+      return;
+    }
+    const totalPages = Math.max(1, Math.ceil(total / TABLE_PAGE_SIZE));
+    let currentIndex = Math.floor(skip / TABLE_PAGE_SIZE);
+    if (currentIndex < 0) {
+      currentIndex = 0;
+    }
+    if (currentIndex >= totalPages) {
+      currentIndex = totalPages - 1;
+    }
+    const list = buildTablePageIndexList(totalPages, currentIndex);
+    const top = document.getElementById("tablePagerTopPages");
+    const bottom = document.getElementById("tablePagerBottomPages");
+    fillTablePageButtons(top, list, currentIndex);
+    fillTablePageButtons(bottom, list, currentIndex);
+    const atFirst = currentIndex <= 0;
+    const atLast = currentIndex >= totalPages - 1;
+    for (const bid of ["btnTablePrev", "btnTablePrevTop"]) {
+      const b = document.getElementById(bid);
+      if (b) {
+        b.disabled = atFirst;
+      }
+    }
+    for (const bid of ["btnTableNext", "btnTableNextTop"]) {
+      const b = document.getElementById(bid);
+      if (b) {
+        b.disabled = atLast;
+      }
+    }
+  }
+
+  function onTablePageNumberClick(e) {
+    const btn = e.target?.closest?.("button[data-table-page]");
+    if (!btn) {
+      return;
+    }
+    const p = parseInt(btn.getAttribute("data-table-page"), 10);
+    if (!Number.isFinite(p) || p < 0) {
+      return;
+    }
+    e.preventDefault();
+    tableSkip = p * TABLE_PAGE_SIZE;
+    loadResultsTable();
+  }
+
   async function loadResultsTable() {
     const metaTop = document.getElementById("tableMetaTop");
     const metaBottom = document.getElementById("tableMetaBottom");
@@ -1128,18 +1363,42 @@
     if (!res.ok) {
       metaText("Не удалось загрузить таблицу.");
       tbody.innerHTML = "";
+      clearTablePager();
+      for (const bid of ["btnTablePrev", "btnTablePrevTop", "btnTableNext", "btnTableNextTop"]) {
+        const b = document.getElementById(bid);
+        if (b) {
+          b.disabled = true;
+        }
+      }
       syncExpandAllReviewsLabel();
       return;
     }
     const rows = page.items || [];
     const total = typeof page.total === "number" ? page.total : rows.length;
     lastTableTotal = total;
-    const skip = typeof page.skip === "number" ? page.skip : tableSkip;
+    const skipRaw = typeof page.skip === "number" ? page.skip : tableSkip;
+    const maxSkip = total > 0 ? Math.max(0, (Math.ceil(total / TABLE_PAGE_SIZE) - 1) * TABLE_PAGE_SIZE) : 0;
+    const skip = Math.min(skipRaw, maxSkip);
+    if (skip !== skipRaw) {
+      tableSkip = skip;
+      await loadResultsTable();
+      return;
+    }
+    tableSkip = skip;
     {
       const from = total ? skip + 1 : 0;
       const to = skip + rows.length;
-      metaText(total ? `Показаны ${from}–${to} из ${total}` : "Нет строк по фильтрам");
+      const totalPages = total > 0 ? Math.max(1, Math.ceil(total / TABLE_PAGE_SIZE)) : 0;
+      const pageNum = total > 0 ? Math.floor(skip / TABLE_PAGE_SIZE) + 1 : 0;
+      if (total) {
+        metaText(
+          `Стр. ${pageNum}${totalPages > 1 ? ` из ${totalPages}` : ""} · ${from}–${to} из ${total}`,
+        );
+      } else {
+        metaText("Нет строк по фильтрам");
+      }
     }
+    updateTablePagerUI(total, skip);
     tbody.innerHTML = "";
     for (const r of rows) {
       const tr = document.createElement("tr");
@@ -1149,7 +1408,7 @@
       const t2 = t[2] != null ? esc(t[2]) : "—";
       const fd = r.filters || {};
       const filterCells = tableFilterColumns.map((c) => `<td>${esc(fd[c] != null ? String(fd[c]) : "—")}</td>`).join("");
-      tr.innerHTML = `<td>${r.row_index}</td><td>${esc(r.sentiment || "—")}</td><td>${t0}</td><td>${t1}</td><td>${t2}</td>${filterCells}`;
+      tr.innerHTML = `<td>${sentimentPillHtml(r.sentiment)}</td><td>${t0}</td><td>${t1}</td><td>${t2}</td>${filterCells}`;
       appendReviewTextCell(tr, r.text ?? "");
       tbody.append(tr);
     }
@@ -1159,6 +1418,7 @@
           const body = row.querySelector(".ra-review-text-body");
           const btn = row.querySelector(".ra-row-expand-btn");
           if (!body || !btn) continue;
+          if (body.dataset.raShort === "1") continue;
           const needsExpand = body.scrollHeight > body.clientHeight + 1;
           if (!needsExpand) {
             body.classList.remove("ra-review-text-collapsed");
@@ -1172,21 +1432,25 @@
 
   document.getElementById("btnUpload").addEventListener("click", async () => {
     const input = document.getElementById("fileInput");
+    const upAlert = document.getElementById("uploadAlert");
     if (!input.files?.length) {
-      show(document.getElementById("uploadAlert"), "Выберите файл.", "warning");
+      show(upAlert, "Выберите файл.", "warning");
       return;
     }
+    const btnUp = document.getElementById("btnUpload");
     const fd = new FormData();
     fd.append("file", input.files[0]);
-    show(document.getElementById("uploadAlert"), "Загрузка…", "secondary");
+    show(upAlert, "");
+    setButtonLoading(btnUp, true, "Загрузка…");
     try {
       const res = await fetch(`/api/projects/${projectId}/upload`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
       await loadProject();
-      show(document.getElementById("uploadAlert"), "Файл загружен.", "success");
     } catch (e) {
-      show(document.getElementById("uploadAlert"), esc(e.message), "danger");
+      show(upAlert, esc(e.message), "danger");
+    } finally {
+      setButtonLoading(btnUp, false);
     }
   });
 
@@ -1195,9 +1459,11 @@
     const dateRaw = document.getElementById("dateColumn").value;
     const date_column = dateRaw || null;
     const filter_columns = Array.from(document.getElementById("filterColumns").selectedOptions).map((o) => o.value);
+    const mapAlert = document.getElementById("mappingAlert");
     const btnMap = document.getElementById("btnMapping");
-    show(document.getElementById("mappingAlert"), "Сохранение и запуск анализа…", "secondary");
-    btnMap.disabled = true;
+    show(mapAlert, "");
+    setButtonLoading(btnMap, true, "Сохранение…");
+    let leavePage = false;
     try {
       const res = await fetch(`/api/projects/${projectId}/mapping`, {
         method: "PATCH",
@@ -1206,25 +1472,40 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
-      const msg = data.full_file_fits
-        ? `Все ${data.m_rows} строк в лимите токенов.`
-        : `В лимит входят первые ${data.k_rows} из ${data.m_rows} строк (токенов: ${data.tokens_used_for_k}).`;
-      show(document.getElementById("mappingAlert"), msg, data.full_file_fits ? "success" : "warning");
       await loadProject();
-      await runAnalyzeFlow();
+      setAnalyzeSessionFlag();
+      const ares = await fetch(`/api/projects/${projectId}/analyze`, { method: "POST" });
+      const adata = await ares.json();
+      if (!ares.ok) {
+        throw new Error(typeof adata.detail === "string" ? adata.detail : JSON.stringify(adata.detail));
+      }
+      leavePage = true;
+      globalThis.alert("Конфигурация сохранена, анализ запущен. Статус можно смотреть в списке проектов.");
+      globalThis.location.assign("/");
     } catch (e) {
-      show(document.getElementById("mappingAlert"), esc(e.message), "danger");
+      show(mapAlert, esc(e.message), "danger");
     } finally {
-      btnMap.disabled = false;
+      if (!leavePage) {
+        setButtonLoading(btnMap, false);
+      }
     }
   });
 
-  async function runAnalyzeFlow() {
-    const btn = document.getElementById("btnAnalyze");
-    const reBtn = document.getElementById("btnReanalyze");
-    if (btn) btn.disabled = true;
-    if (reBtn) reBtn.disabled = true;
-    document.getElementById("jobStatus").textContent = "";
+  async function runAnalyzeFlow(loadingButton) {
+    if (!loadingButton) {
+      return;
+    }
+    setAnalyzeSessionFlag();
+    const otherAnalyze = ["btnAnalyze", "btnReanalyze"]
+      .map((id) => document.getElementById(id))
+      .find((el) => el && el !== loadingButton);
+    if (otherAnalyze) {
+      otherAnalyze.disabled = true;
+    }
+    const jobSt = document.getElementById("jobStatus");
+    jobSt.textContent = "";
+    jobSt.innerHTML = "";
+    setButtonLoading(loadingButton, true, "Запуск анализа…");
     try {
       const res = await fetch(`/api/projects/${projectId}/analyze`, { method: "POST" });
       const data = await res.json();
@@ -1232,21 +1513,23 @@
       await pollJob(data.job_id);
       await loadProject();
     } catch (e) {
-      document.getElementById("jobStatus").textContent = esc(e.message);
+      jobSt.textContent = esc(e.message);
       await loadProject();
     } finally {
-      if (btn) btn.disabled = false;
-      if (reBtn) reBtn.disabled = false;
+      setButtonLoading(loadingButton, false);
+      if (otherAnalyze) {
+        otherAnalyze.disabled = false;
+      }
     }
   }
 
-  document.getElementById("btnAnalyze").addEventListener("click", () => {
-    runAnalyzeFlow();
+  document.getElementById("btnAnalyze").addEventListener("click", (e) => {
+    runAnalyzeFlow(e.currentTarget);
   });
 
-  document.getElementById("btnReanalyze")?.addEventListener("click", () => {
+  document.getElementById("btnReanalyze")?.addEventListener("click", (e) => {
     if (!globalThis.confirm("Запустить анализ заново? Текущие метки по строкам будут пересчитаны.")) return;
-    runAnalyzeFlow();
+    runAnalyzeFlow(e.currentTarget);
   });
 
   document.getElementById("btnFilterApply")?.addEventListener("click", () => {
@@ -1279,6 +1562,8 @@
   document.getElementById("btnTableNext")?.addEventListener("click", goTableNext);
   document.getElementById("btnTablePrevTop")?.addEventListener("click", goTablePrev);
   document.getElementById("btnTableNextTop")?.addEventListener("click", goTableNext);
+  document.getElementById("tablePagerTopNav")?.addEventListener("click", onTablePageNumberClick);
+  document.getElementById("tablePagerBottomNav")?.addEventListener("click", onTablePageNumberClick);
 
   document.getElementById("btnReviewsExpandAll")?.addEventListener("click", () => {
     const expandable = [];
