@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     analysis_batch_token_budget: int = Field(default=50_000, ge=1)
     max_upload_mb: int = 15
     max_import_rows: int = 10_000
+    # Google Sheets: загрузка CSV по export URL
+    sheet_fetch_timeout_s: int = 45
+    sheet_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
 
     # JWT: если AUTH_USERNAME непустой — все страницы и /api кроме логина требуют cookie access_token
     auth_username: str = ""

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -77,7 +78,26 @@ async def lifespan(app: FastAPI):
         logger.info("MongoDB: индексы проверены")
     except Exception:
         logger.exception("MongoDB недоступен при старте — повторите при запущенной БД")
+
+    async def _sheet_poll_loop() -> None:
+        from app.services.sheet_poll import tick_sheet_polling
+
+        while True:
+            try:
+                await asyncio.sleep(60)
+                await tick_sheet_polling(app.state.db)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Опрос Google Таблиц")
+
+    poll_task = asyncio.create_task(_sheet_poll_loop())
     yield
+    poll_task.cancel()
+    try:
+        await poll_task
+    except asyncio.CancelledError:
+        pass
     client.close()
 
 

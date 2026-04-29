@@ -28,14 +28,23 @@ from app.schemas.api import (
     ResultsPage,
     ScatterPoint,
     ScatterResponse,
+    SpreadsheetImportRequest,
     TimelinePoint,
     TokenMappingResponse,
     TopicSentimentSlice,
+    ManualSheetSyncResponse,
 )
 from app.services import files
 from app.services.dashboard import build_dashboard, build_scatter_points, list_reviews_for_date
 from app.services.row_results import build_results_facets, filter_row_results, load_all_row_results
-from app.services.job import run_analysis_job
+from app.services.job import run_analysis_job, run_incremental_analysis_job
+from app.services.row_hash import content_hash
+from app.services.sheet_sync import (
+    SheetSyncError,
+    append_new_rows_from_spreadsheet,
+    ingest_from_spreadsheet_url,
+)
+from app.services.spreadsheet_url import SpreadsheetUrlError
 from app.services.tokens import prefix_rows_by_token_limit
 
 logger = logging.getLogger(__name__)
@@ -101,6 +110,12 @@ def _project_to_detail(doc: dict[str, Any]) -> ProjectDetail:
         business_insight_at=doc.get("business_insight_at"),
         topic_count=_clamp_topic_count(doc.get("topic_count")),
         notification_email=doc.get("notification_email"),
+        data_source=doc.get("data_source") or "file",
+        spreadsheet_url=doc.get("spreadsheet_url"),
+        last_sheet_sync_at=doc.get("last_sheet_sync_at"),
+        sync_interval_minutes=doc.get("sync_interval_minutes"),
+        alert_on_negative_in_new_rows=bool(doc.get("alert_on_negative_in_new_rows")),
+        alert_negative_share_pct=doc.get("alert_negative_share_pct"),
     )
 
 
@@ -197,7 +212,15 @@ async def upload_file(
 
     now = _now()
     await project_rows_coll(db).delete_many({"project_id": project_id})
-    row_docs = [{"project_id": project_id, "row_index": i, "data": r} for i, r in enumerate(rows)]
+    row_docs = [
+        {
+            "project_id": project_id,
+            "row_index": i,
+            "data": r,
+            "content_hash": content_hash(r),
+        }
+        for i, r in enumerate(rows)
+    ]
     if row_docs:
         await project_rows_coll(db).insert_many(row_docs)
 
@@ -219,6 +242,13 @@ async def upload_file(
                 "topic_count": None,
                 "notification_email": None,
                 "error_message": None,
+                "data_source": "file",
+                "spreadsheet_url": None,
+                "spreadsheet_export_url": None,
+                "sync_interval_minutes": None,
+                "alert_on_negative_in_new_rows": False,
+                "alert_negative_share_pct": None,
+                "topic_vocabulary": None,
             }
         },
     )
@@ -231,6 +261,80 @@ async def upload_file(
         preview_rows=preview,
         row_count=len(rows),
         phase="awaiting_mapping",
+    )
+
+
+@router.post("/{project_id}/import-spreadsheet", response_model=FileUploadResponse)
+async def import_spreadsheet(
+    project_id: str,
+    body: SpreadsheetImportRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> FileUploadResponse:
+    oid = _oid(project_id)
+    project = await projects_coll(db).find_one({"_id": oid})
+    if not project:
+        raise HTTPException(404, "Проект не найден")
+    phase = project.get("phase", "awaiting_file")
+    if phase not in ("awaiting_file", "awaiting_mapping", "error"):
+        raise HTTPException(400, "Источник данных недоступен на текущей фазе проекта")
+    try:
+        r = await ingest_from_spreadsheet_url(db, project_id, body.url.strip(), settings)
+    except SpreadsheetUrlError as e:
+        raise HTTPException(400, str(e)) from e
+    except SheetSyncError as e:
+        raise HTTPException(400, str(e)) from e
+    preview = list(r.get("preview_rows") or [])[:5]
+    return FileUploadResponse(
+        project_id=project_id,
+        filename="Google Таблица (CSV)",
+        columns=r["columns"],
+        preview_rows=preview,
+        row_count=int(r["row_count"]),
+        phase="awaiting_mapping",
+    )
+
+
+@router.post("/{project_id}/sync-spreadsheet", response_model=ManualSheetSyncResponse)
+async def sync_spreadsheet_now(
+    project_id: str,
+    db: Db,
+    settings: SettingsDep,
+) -> ManualSheetSyncResponse:
+    """Ручная проверка Google Таблицы (только data_source=spreadsheet, phase=complete)."""
+    oid = _oid(project_id)
+    project = await projects_coll(db).find_one({"_id": oid})
+    if not project:
+        raise HTTPException(404, "Проект не найден")
+    if project.get("data_source") != "spreadsheet":
+        raise HTTPException(400, "Синхронизация только для проектов с Google Таблицей")
+    if project.get("phase") != "complete":
+        raise HTTPException(400, "Дождитесь завершения анализа или снимите очередь")
+    try:
+        n_new, new_idx, _ = await append_new_rows_from_spreadsheet(
+            db, project, project_id, settings
+        )
+    except (SpreadsheetUrlError, SheetSyncError) as e:
+        raise HTTPException(400, str(e)) from e
+    if n_new <= 0 or not new_idx:
+        return ManualSheetSyncResponse(new_rows=0, job_id=None, message="Новых строк нет")
+    t = _now()
+    res = await project_jobs_coll(db).insert_one(
+        {
+            "project_id": project_id,
+            "status": "queued",
+            "created_at": t,
+            "completed_at": None,
+            "error_message": None,
+            "job_kind": "incremental",
+        }
+    )
+    job_id = str(res.inserted_id)
+    await run_incremental_analysis_job(db, job_id, project_id, new_idx)
+    return ManualSheetSyncResponse(
+        new_rows=n_new,
+        job_id=job_id,
+        message=f"Обработано новых отзывов: {n_new}.",
     )
 
 
@@ -274,23 +378,32 @@ async def update_mapping(
     )
 
     now = _now()
+    set_doc: dict[str, Any] = {
+        "text_column": body.text_column,
+        "date_column": body.date_column,
+        "filter_columns": body.filter_columns,
+        "k_rows": k,
+        "m_rows": m,
+        "tokens_used": used,
+        "token_limit_t": settings.token_limit_t,
+        "topic_count": _clamp_topic_count(body.topic_count),
+        "notification_email": body.notification_email,
+        "phase": "awaiting_analysis",
+        "updated_at": now,
+    }
+    if project.get("data_source") == "spreadsheet":
+        sm = body.sync_interval_minutes if body.sync_interval_minutes is not None else 60
+        sm = max(5, min(7 * 24 * 60, int(sm)))
+        set_doc["sync_interval_minutes"] = sm
+        set_doc["alert_on_negative_in_new_rows"] = bool(body.alert_on_negative_in_new_rows)
+        if body.alert_on_negative_in_new_rows:
+            apct = body.alert_negative_share_pct if body.alert_negative_share_pct is not None else 30
+            set_doc["alert_negative_share_pct"] = max(0, min(100, int(apct)))
+        else:
+            set_doc["alert_negative_share_pct"] = None
     await projects_coll(db).update_one(
         {"_id": oid},
-        {
-            "$set": {
-                "text_column": body.text_column,
-                "date_column": body.date_column,
-                "filter_columns": body.filter_columns,
-                "k_rows": k,
-                "m_rows": m,
-                "tokens_used": used,
-                "token_limit_t": settings.token_limit_t,
-                "topic_count": _clamp_topic_count(body.topic_count),
-                "notification_email": body.notification_email,
-                "phase": "awaiting_analysis",
-                "updated_at": now,
-            }
-        },
+        {"$set": set_doc},
     )
 
     return TokenMappingResponse(
@@ -386,6 +499,7 @@ async def scatter_points(
     k = int(project.get("k_rows") or 0)
     date_col = project.get("date_column")
     fc = _chart_filter_substrings(request, project)
+    ds = project.get("data_source") or "file"
     raw_points, topic_colors, has_axis = await build_scatter_points(
         db,
         project_id,
@@ -396,6 +510,7 @@ async def scatter_points(
         chart_topic=chart_topic,
         filter_substrings=fc,
         group_by=gb,
+        data_source=ds,
     )
     points = [ScatterPoint(**p) for p in raw_points]
     return ScatterResponse(points=points, topic_colors=topic_colors, has_date_axis=has_axis)
@@ -440,6 +555,9 @@ async def reviews_by_date(
     date_col = project.get("date_column")
     k = int(project.get("k_rows") or 0)
     fc = _chart_filter_substrings(request, project)
+    ds = project.get("data_source") or "file"
+    m = project.get("m_rows")
+    m_rows = int(m) if m is not None else None
     rows = await list_reviews_for_date(
         db,
         project_id,
@@ -450,6 +568,8 @@ async def reviews_by_date(
         day_to_iso=d_to,
         chart_topic=chart_topic,
         filter_substrings=fc,
+        data_source=ds,
+        m_rows=m_rows,
     )
     return ReviewsByDateResponse(
         date=date,
@@ -587,6 +707,7 @@ async def project_dashboard(
     k = int(project.get("k_rows") or 0)
     date_col = project.get("date_column")
     fc = _chart_filter_substrings(request, project)
+    ds = project.get("data_source") or "file"
     sc, tc, n, tl_raw, has_axis, slices_raw, pain_raw = await build_dashboard(
         db,
         project_id,
@@ -596,6 +717,7 @@ async def project_dashboard(
         date_to=date_to,
         chart_topic=chart_topic,
         filter_substrings=fc,
+        data_source=ds,
     )
     timeline = [TimelinePoint(**x) for x in tl_raw]
     return DashboardResponse(

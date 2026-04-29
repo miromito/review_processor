@@ -49,7 +49,12 @@ async def generate_and_store_insight(
     text_col = project.get("text_column") or "text"
     date_col = project.get("date_column")
 
-    pairs = await load_analyzed_pairs(db, project_id, k)
+    pairs = await load_analyzed_pairs(
+        db,
+        project_id,
+        k,
+        data_source=project.get("data_source") or "file",
+    )
     sc, tc, n, _tl, _axis, _slices, pain = aggregates_from_pairs(pairs, date_col)
     topic_sorted = sorted(tc.items(), key=lambda x: -x[1])[:10] if tc else []
     leading = topic_sorted[0][0] if topic_sorted else "—"

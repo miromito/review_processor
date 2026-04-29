@@ -1,6 +1,9 @@
 (() => {
   const projectId = globalThis.__PROJECT_ID__;
   const PROJECTS_TOAST_KEY = "ra_projects_toast";
+  /** Сообщение после успешной ручной проверки Google Таблицы (показать после reload). */
+  const PROJECT_DETAIL_TOAST_KEY = "ra_project_detail_toast";
+  let lastProjectJson = null;
 
   const titleEl = document.getElementById("projectTitle");
   const badgeEl = document.getElementById("phaseBadge");
@@ -308,6 +311,25 @@
     return String(s || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
+  function flushProjectDetailSyncToast() {
+    let msg = "";
+    try {
+      msg = sessionStorage.getItem(PROJECT_DETAIL_TOAST_KEY) || "";
+    } catch {
+      /* ignore */
+    }
+    if (!msg) return;
+    try {
+      sessionStorage.removeItem(PROJECT_DETAIL_TOAST_KEY);
+    } catch {
+      /* ignore */
+    }
+    const meta = document.getElementById("sheetSyncMeta");
+    if (!meta) return;
+    const base = (meta.textContent || "").trim();
+    meta.textContent = base ? `${base} — ${msg}` : msg;
+  }
+
   function clampTopicCount(n) {
     const x = Number.parseInt(String(n), 10);
     if (Number.isNaN(x)) return 10;
@@ -329,6 +351,50 @@
     if (!el) return;
     const v = p?.notification_email != null ? String(p.notification_email) : "";
     el.value = v;
+  }
+
+  function applyDataSourceUi(p) {
+    if (!p) return;
+    const ds = p.data_source || "file";
+    const isSheet = ds === "spreadsheet";
+    const phase = p.phase;
+    document.getElementById("phase1File")?.classList.toggle("d-none", isSheet);
+    document.getElementById("phase1Sheet")?.classList.toggle("d-none", !isSheet);
+    const su = document.getElementById("sheetUrlDisplay");
+    if (su) {
+      su.textContent = p.spreadsheet_url || "—";
+    }
+    document.getElementById("sheetConfigBlock")?.classList.toggle("d-none", !isSheet);
+    const bar = document.getElementById("sheetDoneBar");
+    if (bar) {
+      const showBar = isSheet && phase === "complete";
+      bar.classList.toggle("d-none", !showBar);
+    }
+    const si = document.getElementById("syncInterval");
+    if (si) si.value = String(p.sync_interval_minutes ?? 60);
+    const an = document.getElementById("alertNeg");
+    if (an) an.checked = Boolean(p.alert_on_negative_in_new_rows);
+    const ap = document.getElementById("alertNegPct");
+    if (ap) {
+      ap.value = String(p.alert_negative_share_pct != null ? p.alert_negative_share_pct : 30);
+    }
+    const meta = document.getElementById("sheetSyncMeta");
+    if (meta) {
+      if (isSheet && p.last_sheet_sync_at) {
+        try {
+          const d = new Date(p.last_sheet_sync_at);
+          meta.textContent = Number.isFinite(d.getTime())
+            ? `Последняя проверка: ${d.toLocaleString("ru-RU")}`
+            : "Таблица подключена";
+        } catch {
+          meta.textContent = "Таблица подключена";
+        }
+      } else if (isSheet && phase === "complete") {
+        meta.textContent = "Периодически скачиваем CSV. Новые строки (по хэшу) — дозаливка анализа.";
+      } else {
+        meta.textContent = "";
+      }
+    }
   }
 
   function destroyCharts() {
@@ -582,6 +648,7 @@
     } else {
       setStatusBannerHtml("");
     }
+    applyDataSourceUi(p);
   }
 
   async function loadProject() {
@@ -602,6 +669,8 @@
     }
     syncTopicCountFromProject(p);
     syncNotificationEmailFromProject(p);
+    lastProjectJson = p;
+    flushProjectDetailSyncToast();
     return p;
   }
 
@@ -1446,6 +1515,35 @@
     tr.setAttribute("aria-valuenow", tr.value);
   });
 
+  document.getElementById("btnSyncSheet")?.addEventListener("click", async () => {
+    const b = document.getElementById("btnSyncSheet");
+    if (!b) return;
+    const meta = document.getElementById("sheetSyncMeta");
+    setButtonLoading(b, true, "Проверка…");
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sync-spreadsheet`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+      }
+      const n = data.new_rows;
+      if (n > 0) {
+        try {
+          sessionStorage.setItem(
+            PROJECT_DETAIL_TOAST_KEY,
+            `Добавлено ${n} нов. отзыв(ов), графики обновлены.`,
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      globalThis.location.reload();
+    } catch (e) {
+      if (meta) meta.textContent = esc(e.message);
+      setButtonLoading(b, false);
+    }
+  });
+
   document.getElementById("btnMapping").addEventListener("click", async () => {
     const text_column = document.getElementById("textColumn").value;
     const dateRaw = document.getElementById("dateColumn").value;
@@ -1460,10 +1558,23 @@
     setButtonLoading(btnMap, true, "Сохранение…");
     let leavePage = false;
     try {
+      const mapBody = { text_column, date_column, filter_columns, topic_count, notification_email };
+      const psrc = lastProjectJson;
+      if (psrc && psrc.data_source === "spreadsheet") {
+        mapBody.sync_interval_minutes = (() => {
+          const n = parseInt(String(document.getElementById("syncInterval")?.value ?? "60"), 10);
+          if (Number.isNaN(n)) return 60;
+          return Math.min(10080, Math.max(5, n));
+        })();
+        mapBody.alert_on_negative_in_new_rows = Boolean(document.getElementById("alertNeg")?.checked);
+        const pctRaw = String(document.getElementById("alertNegPct")?.value ?? "30");
+        const pct = parseInt(pctRaw, 10);
+        mapBody.alert_negative_share_pct = Number.isNaN(pct) ? 30 : Math.min(100, Math.max(0, pct));
+      }
       const res = await fetch(`/api/projects/${projectId}/mapping`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text_column, date_column, filter_columns, topic_count, notification_email }),
+        body: JSON.stringify(mapBody),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));

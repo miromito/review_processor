@@ -64,28 +64,33 @@ def chunk_rows_by_analysis_token_budget(
     text_column: str,
     model: str,
     max_payload_tokens: int,
+    *,
+    base_index: int = 0,
 ) -> list[tuple[int, list[dict[str, Any]]]]:
     """
     Делит строки на батчи так, чтобы JSON полезной нагрузки не превышал max_payload_tokens.
     Возвращает пары (абсолютный индекс первой строки, срез строк).
+    base_index — смещение, если rows — фрагмент (например, только хвост таблицы).
     """
     budget = max(1, int(max_payload_tokens))
+    base = int(base_index)
     n = len(rows)
     out: list[tuple[int, list[dict[str, Any]]]] = []
     start = 0
     while start < n:
-        one_tok = count_batch_payload_tokens(rows[start : start + 1], text_column, start, model)
+        abs0 = base + start
+        one_tok = count_batch_payload_tokens(rows[start : start + 1], text_column, abs0, model)
         if one_tok > budget:
             end = start + 1
         else:
             lo, hi = start + 1, n
             while lo < hi:
                 mid = (lo + hi + 1) // 2
-                if count_batch_payload_tokens(rows[start:mid], text_column, start, model) <= budget:
+                if count_batch_payload_tokens(rows[start:mid], text_column, abs0, model) <= budget:
                     lo = mid
                 else:
                     hi = mid - 1
             end = lo
-        out.append((start, rows[start:end]))
+        out.append((abs0, rows[start:end]))
         start = end
     return out

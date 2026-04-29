@@ -118,11 +118,42 @@ def topic_color(topic: str) -> str:
     return TOPIC_PALETTE[h]
 
 
+async def _load_all_pairs_by_results(
+    db: AsyncIOMotorDatabase,
+    project_id: str,
+) -> list[tuple[int, dict[str, Any], dict[str, Any]]]:
+    res_docs = await project_results_coll(db).find({"project_id": project_id}).to_list(length=None)
+    if not res_docs:
+        return []
+    indices = sorted({int(r["row_index"]) for r in res_docs})
+    if not indices:
+        return []
+    by_idx: dict[int, dict[str, Any]] = {}
+    cur = project_rows_coll(db).find(
+        {"project_id": project_id, "row_index": {"$in": indices}},
+    )
+    async for doc in cur:
+        by_idx[int(doc["row_index"])] = doc
+    r_by: dict[int, dict[str, Any]] = {int(r["row_index"]): r for r in res_docs}
+    out: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+    for i in sorted(r_by):
+        row_doc = by_idx.get(i)
+        if not row_doc:
+            continue
+        res = r_by[i]
+        out.append((i, dict(row_doc.get("data") or {}), res))
+    return out
+
+
 async def load_analyzed_pairs(
     db: AsyncIOMotorDatabase,
     project_id: str,
     k_rows: int,
+    *,
+    data_source: str | None = "file",
 ) -> list[tuple[int, dict[str, Any], dict[str, Any]]]:
+    if data_source == "spreadsheet":
+        return await _load_all_pairs_by_results(db, project_id)
     k = max(0, int(k_rows))
     cursor = project_rows_coll(db).find({"project_id": project_id}).sort("row_index", 1).limit(k)
     rows_docs = await cursor.to_list(length=k + 1)
@@ -372,8 +403,9 @@ async def build_dashboard(
     date_to: str | None = None,
     chart_topic: str | None = None,
     filter_substrings: dict[str, str] | None = None,
+    data_source: str | None = "file",
 ) -> tuple[dict[str, int], dict[str, int], int, list[dict[str, Any]], bool, list[dict[str, Any]], list[dict[str, Any]]]:
-    pairs = await load_analyzed_pairs(db, project_id, k_rows)
+    pairs = await load_analyzed_pairs(db, project_id, k_rows, data_source=data_source)
     fc = filter_substrings or {}
     if chart_filters_active(date_from, date_to, chart_topic, fc):
         pairs = filter_pairs_for_charts(
@@ -398,10 +430,11 @@ async def build_scatter_points(
     chart_topic: str | None = None,
     filter_substrings: dict[str, str] | None = None,
     group_by: str = "day",
+    data_source: str | None = "file",
 ) -> tuple[list[dict[str, Any]], dict[str, str], bool]:
     if not date_column:
         return [], {}, False
-    pairs = await load_analyzed_pairs(db, project_id, k_rows)
+    pairs = await load_analyzed_pairs(db, project_id, k_rows, data_source=data_source)
     fc = filter_substrings or {}
     if chart_filters_active(date_from, date_to, chart_topic, fc):
         pairs = filter_pairs_for_charts(
@@ -426,6 +459,8 @@ async def list_reviews_for_date(
     day_to_iso: str | None = None,
     chart_topic: str | None = None,
     filter_substrings: dict[str, str] | None = None,
+    data_source: str | None = "file",
+    m_rows: int | None = None,
 ) -> list[dict[str, Any]]:
     if not date_column:
         return []
@@ -435,7 +470,13 @@ async def list_reviews_for_date(
     d_end = (day_to_iso or "").strip() or None
 
     out: list[dict[str, Any]] = []
-    cursor = project_rows_coll(db).find({"project_id": project_id}).sort("row_index", 1).limit(int(k_rows))
+    if data_source == "spreadsheet" and m_rows is not None and m_rows > 0:
+        _limit = int(m_rows)
+    elif data_source == "spreadsheet":
+        _limit = 1_000_000
+    else:
+        _limit = int(k_rows)
+    cursor = project_rows_coll(db).find({"project_id": project_id}).sort("row_index", 1).limit(int(_limit))
     async for row_doc in cursor:
         idx = int(row_doc["row_index"])
         data = dict(row_doc.get("data") or {})

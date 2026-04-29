@@ -13,6 +13,12 @@ ProjectPhase = Literal[
 ]
 
 
+class SpreadsheetImportRequest(BaseModel):
+    """Публичная ссылка на Google Таблицу; CSV должен скачиваться без логина."""
+
+    url: str = Field(..., min_length=8, max_length=2000, description="Ссылка вида https://docs.google.com/spreadsheets/...")
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
@@ -54,6 +60,13 @@ class ProjectDetail(BaseModel):
     business_insight_at: datetime | None = None
     topic_count: int = Field(10, ge=3, le=20, description="Целевое число уникальных тем по датасету")
     notification_email: str | None = None
+    # Источник: файл или Google-таблица (только при spreadsheet — опрос и алерты)
+    data_source: Literal["file", "spreadsheet"] = "file"
+    spreadsheet_url: str | None = None
+    last_sheet_sync_at: datetime | None = None
+    sync_interval_minutes: int | None = None
+    alert_on_negative_in_new_rows: bool = False
+    alert_negative_share_pct: int | None = None
 
 
 class InsightResponse(BaseModel):
@@ -70,12 +83,29 @@ class FileUploadResponse(BaseModel):
     phase: ProjectPhase
 
 
+class ManualSheetSyncResponse(BaseModel):
+    new_rows: int
+    job_id: str | None = None
+    message: str = ""
+
+
 class MappingUpdate(BaseModel):
     text_column: str = Field(..., description="Колонка с текстом отзыва")
     date_column: str | None = None
     filter_columns: list[str] = Field(default_factory=list)
     topic_count: int = Field(10, ge=3, le=20, description="Сколько уникальных тем допускается по всему датасету")
     notification_email: EmailStr | None = None
+    sync_interval_minutes: int | None = Field(
+        default=None,
+        description="Период проверки Google Таблицы, мин. (5–10080), только data_source=spreadsheet",
+    )
+    alert_on_negative_in_new_rows: bool = False
+    alert_negative_share_pct: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Порог доли негативов среди **новых** обработанных отзывов, при достижении — письмо",
+    )
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("notification_email", mode="before")

@@ -62,11 +62,38 @@ def row_result_from_row(
 
 
 async def load_all_row_results(db: AsyncIOMotorDatabase, project_id: str, project: dict[str, Any]) -> list[RowResult]:
-    k = int(project.get("k_rows") or 0)
     text_col = project.get("text_column") or "text"
     date_col = project.get("date_column")
     filter_cols = list(project.get("filter_columns") or [])
 
+    if project.get("data_source") == "spreadsheet":
+        res_cursor = project_results_coll(db).find({"project_id": project_id})
+        res_docs = await res_cursor.to_list(length=None)
+        if not res_docs:
+            return []
+        idxs = sorted({int(r["row_index"]) for r in res_docs})
+        cur = project_rows_coll(db).find({"project_id": project_id, "row_index": {"$in": idxs}})
+        by_idx: dict[int, dict[str, Any]] = {}
+        async for doc in cur:
+            by_idx[int(doc["row_index"])] = doc
+        rmap = {int(r["row_index"]): r for r in res_docs}
+        out: list[RowResult] = []
+        for i in sorted(rmap):
+            doc = by_idx.get(i)
+            if not doc:
+                continue
+            out.append(
+                row_result_from_row(
+                    doc,
+                    rmap.get(i),
+                    text_col,
+                    date_col,
+                    filter_cols,
+                )
+            )
+        return out
+
+    k = int(project.get("k_rows") or 0)
     cursor = project_rows_coll(db).find({"project_id": project_id}).sort("row_index", 1).limit(max(k, 0))
     rows_docs = await cursor.to_list(length=max(k, 0) + 1)
     if len(rows_docs) > k:
@@ -76,7 +103,7 @@ async def load_all_row_results(db: AsyncIOMotorDatabase, project_id: str, projec
     res_docs = await res_cursor.to_list(length=None)
     by_idx = {int(d["row_index"]): d for d in res_docs}
 
-    out: list[RowResult] = []
+    out = []
     for doc in rows_docs:
         idx = int(doc["row_index"])
         out.append(row_result_from_row(doc, by_idx.get(idx), text_col, date_col, filter_cols))
