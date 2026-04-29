@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(default=60 * 24 * 7, ge=1)
     cookie_secure: bool = False
 
+    # Почта (пустой SMTP — письма не отправляются, проект и анализ работают как раньше)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_use_ssl: bool = False
+    smtp_use_starttls: bool = True
+    mail_from: str = ""
+    # Ссылка на проект в письмах (без хвоста)
+    app_base_url: str = "http://127.0.0.1:8000"
+
     @model_validator(mode="after")
     def jwt_required_when_auth_on(self):
         if self.auth_username.strip() and not self.jwt_secret.strip():

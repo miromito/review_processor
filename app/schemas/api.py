@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 ProjectPhase = Literal[
     "awaiting_file",
@@ -52,6 +52,8 @@ class ProjectDetail(BaseModel):
     updated_at: datetime | None = None
     business_insight: str | None = None
     business_insight_at: datetime | None = None
+    topic_count: int = Field(10, ge=3, le=20, description="Целевое число уникальных тем по датасету")
+    notification_email: str | None = None
 
 
 class InsightResponse(BaseModel):
@@ -72,6 +74,17 @@ class MappingUpdate(BaseModel):
     text_column: str = Field(..., description="Колонка с текстом отзыва")
     date_column: str | None = None
     filter_columns: list[str] = Field(default_factory=list)
+    topic_count: int = Field(10, ge=3, le=20, description="Сколько уникальных тем допускается по всему датасету")
+    notification_email: EmailStr | None = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    @field_validator("notification_email", mode="before")
+    @classmethod
+    def _empty_notification_email(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
 
 
 class TokenMappingResponse(BaseModel):
@@ -155,10 +168,7 @@ class ResultsPage(BaseModel):
 
 class ResultsFacetsResponse(BaseModel):
     sentiments: list[str] = Field(default_factory=list)
-    topics_1: list[str] = Field(default_factory=list)
-    topics_2: list[str] = Field(default_factory=list)
-    topics_3: list[str] = Field(default_factory=list)
-    topics_any: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list, description="Уникальные темы (по одной на отзыв)")
     filter_columns: list[str] = Field(default_factory=list)
     filter_choices: dict[str, list[str]] = Field(
         default_factory=dict,

@@ -14,20 +14,19 @@
   <link href="/static/app.css" rel="stylesheet">
   {% block head %}{% endblock %}
 </head>
-<body class="bg-body-secondary">
+<body class="bg-body-secondary{% if request.url.path == '/login' %} ra-body-login{% endif %}">
 {% set path = request.url.path %}
-{% set nav_new = (path == '/projects/new') %}
-{% set nav_projects = (path == '/' or (path.startswith('/projects/') and not nav_new)) %}
+{% set is_login = (path == '/login') %}
+{% set nav_projects = (path == '/' or (path.startswith('/projects/') and path != '/projects/new')) %}
+{% if not is_login %}
 <header class="site-header bg-white sticky-top">
   <nav class="navbar navbar-expand-md" aria-label="Основная навигация">
     <div class="container-xxl">
+      {% if user_logged_in(request) %}
       <a class="navbar-brand d-flex align-items-center gap-2 py-1" href="/"
          aria-label="Анализ отзывов — на список проектов">
         <img class="brand-mark" src="/static/logo.svg" width="36" height="36" alt="">
-        <span class="d-flex flex-column lh-sm">
-          <span class="brand-text">Анализ отзывов</span>
-          <span class="brand-sub d-none d-sm-inline">Сводки и графики по CSV / JSON</span>
-        </span>
+        <span class="brand-text">Анализ отзывов</span>
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
               aria-controls="mainNav" aria-expanded="false" aria-label="Открыть меню">
@@ -38,10 +37,6 @@
           <li class="nav-item">
             <a class="nav-link {{ 'active' if nav_projects else '' }}" href="/" {% if nav_projects %}aria-current="page"{% endif %}
                aria-label="Список проектов">Проекты</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {{ 'active' if nav_new else '' }}" href="/projects/new" {% if nav_new %}aria-current="page"{% endif %}
-               aria-label="Создать новый проект">Новый проект</a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="/docs" target="_blank" rel="noopener noreferrer"
@@ -55,20 +50,30 @@
           {% endif %}
         </ul>
       </div>
+      {% else %}
+      <div class="navbar-brand d-flex align-items-center gap-2 py-1" aria-label="Анализ отзывов">
+        <img class="brand-mark" src="/static/logo.svg" width="36" height="36" alt="">
+        <span class="brand-text">Анализ отзывов</span>
+      </div>
+      {% endif %}
     </div>
   </nav>
 </header>
-<main class="site-main container-xxl px-3 px-lg-4 py-4 py-lg-5">
-  <div class="page-stack">
+{% endif %}
+<main
+  class="site-main {% if is_login %}ra-site-main--login d-flex flex-column flex-grow-1 w-100 p-0{% else %}container-xxl px-3 px-lg-4 py-4 py-lg-5{% endif %}"
+>
+  <div class="{% if is_login %}ra-page-stack--login w-100 flex-grow-1 d-flex flex-column align-items-center{% else %}page-stack{% endif %}">
     {% block content %}{% endblock %}
   </div>
 </main>
+{% if not is_login %}
 <footer class="site-footer">
-  <div class="container-xxl px-3 px-lg-4 py-3 d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
-    <span>Анализ отзывов · интерфейс для работы с датасетами и результатами модели</span>
-    <span class="text-nowrap opacity-75">Версия интерфейса 2026</span>
+  <div class="container-xxl px-3 px-lg-4 py-3">
+    <span>Анализ отзывов</span>
   </div>
 </footer>
+{% endif %}
 {% if show_auth_nav() %}
 <script src="/static/auth_guard.js"></script>
 {% endif %}

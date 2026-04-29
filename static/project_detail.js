@@ -1,28 +1,11 @@
 (() => {
   const projectId = globalThis.__PROJECT_ID__;
-  const ANALYZE_SESSION_KEY = `ra_project_analyze_${projectId}`;
-
-  function setAnalyzeSessionFlag() {
-    try {
-      sessionStorage.setItem(ANALYZE_SESSION_KEY, "1");
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function clearAnalyzeSessionFlag() {
-    try {
-      sessionStorage.removeItem(ANALYZE_SESSION_KEY);
-    } catch {
-      /* ignore */
-    }
-  }
+  const PROJECTS_TOAST_KEY = "ra_projects_toast";
 
   const titleEl = document.getElementById("projectTitle");
   const badgeEl = document.getElementById("phaseBadge");
   const s1 = document.getElementById("phase1");
   const s2 = document.getElementById("phase2");
-  const s3 = document.getElementById("phase3");
   const done = document.getElementById("phaseDone");
 
   const phaseRu = {
@@ -158,6 +141,15 @@
 
   function sentimentDisplayRu(sentKey) {
     return SENTIMENT_AXIS_LABELS[sentimentYIndex(sentKey)] || SENTIMENT_AXIS_LABELS[3];
+  }
+
+  /** Класс для окраски карточки отзыва в модалке (по сентименту). */
+  function sentimentModalItemClass(raw) {
+    const k = normalizeSentiment(String(raw));
+    if (k === "positive") return "ra-reviews-by-date__item--positive";
+    if (k === "negative") return "ra-reviews-by-date__item--negative";
+    if (k === "neutral") return "ra-reviews-by-date__item--neutral";
+    return "ra-reviews-by-date__item--other";
   }
 
   function scatterBubblesWithoutUnknown(bubbles) {
@@ -316,6 +308,29 @@
     return String(s || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
+  function clampTopicCount(n) {
+    const x = Number.parseInt(String(n), 10);
+    if (Number.isNaN(x)) return 10;
+    return Math.min(20, Math.max(3, x));
+  }
+
+  function syncTopicCountFromProject(p) {
+    const tr = document.getElementById("topicCount");
+    const tv = document.getElementById("topicCountValue");
+    if (!tr || !tv) return;
+    const v = clampTopicCount(p?.topic_count);
+    tr.value = String(v);
+    tv.textContent = String(v);
+    tr.setAttribute("aria-valuenow", String(v));
+  }
+
+  function syncNotificationEmailFromProject(p) {
+    const el = document.getElementById("notificationEmail");
+    if (!el) return;
+    const v = p?.notification_email != null ? String(p.notification_email) : "";
+    el.value = v;
+  }
+
   function destroyCharts() {
     Object.values(charts).forEach((c) => {
       if (c) c.destroy();
@@ -401,7 +416,7 @@
       }
     }
     const topicSel = document.getElementById("chartTopic");
-    if (topicSel) fillSelectOptions(topicSel, facets.topics_any || [], true);
+    if (topicSel) fillSelectOptions(topicSel, facets.topics || [], true);
   }
 
   function resetInsightExpandUi(bodyEl, btnEl) {
@@ -514,7 +529,7 @@
       }
       body.textContent =
         text ||
-        "Заключение отсутствует. Оно формируется по завершении анализа. Проверьте наличие ключа API и, при необходимости, повторите анализ или обратитесь к журналу сервера.";
+        "Заключение отсутствует. Оно появится после завершения анализа. При необходимости запустите анализ снова.";
       if (toggleBtn) setupInsightExpand(body, toggleBtn);
     } catch (e) {
       meta.textContent = "";
@@ -523,35 +538,49 @@
     }
   }
 
+  function setStatusBannerHtml(html) {
+    const band = document.getElementById("projectStatusBanner");
+    if (!band) return;
+    if (!html) {
+      band.classList.add("d-none");
+      band.innerHTML = "";
+      return;
+    }
+    band.classList.remove("d-none");
+    band.innerHTML = html;
+  }
+
   function applyPhase(p) {
     document.getElementById("mappingAlert").innerHTML = "";
     document.getElementById("uploadAlert").innerHTML = "";
     badgeEl.textContent = phaseRu[p.phase] || p.phase;
     titleEl.textContent = p.name || "Проект";
 
-    const reBtn = document.getElementById("btnReanalyze");
-    if (reBtn) reBtn.classList.toggle("d-none", p.phase !== "complete");
-
     s1.classList.toggle("d-none", p.phase !== "awaiting_file");
     s2.classList.toggle("d-none", p.phase !== "awaiting_mapping");
-    const showAnalyzePanel =
-      p.phase === "awaiting_analysis" || p.phase === "error" || p.phase === "analyzing";
-    s3.classList.toggle("d-none", !showAnalyzePanel);
-    const btnAnalyzeEl = document.getElementById("btnAnalyze");
-    if (btnAnalyzeEl) {
-      const showRetryAnalyze = p.phase === "awaiting_analysis" || p.phase === "error";
-      btnAnalyzeEl.classList.toggle("d-none", !showRetryAnalyze);
-    }
     done.classList.toggle("d-none", p.phase !== "complete");
 
     if (p.phase === "awaiting_mapping" && p.columns?.length) {
       fillSelects(p.columns);
     }
-    const jobSt = document.getElementById("jobStatus");
-    jobSt.textContent = "";
-    jobSt.innerHTML = "";
-    if (p.phase === "error" && p.error_message) {
-      show(jobSt, esc(p.error_message), "danger");
+    if (p.phase === "error") {
+      const err = p.error_message ? esc(p.error_message) : "Произошла ошибка при анализе.";
+      setStatusBannerHtml(
+        `<div class="alert alert-danger mb-0 d-flex flex-wrap align-items-center gap-2 justify-content-between" role="alert">` +
+          `<span class="ra-status-banner__msg flex-grow-1 min-w-0">${err}</span>` +
+          '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" id="btnBannerStartAnalyze" ' +
+          'aria-label="Запустить анализ снова">Запустить анализ</button></div>',
+      );
+    } else if (p.phase === "awaiting_analysis") {
+      setStatusBannerHtml(
+        '<div class="alert alert-warning mb-0 d-flex flex-wrap align-items-center gap-2 justify-content-between" ' +
+          'role="status">' +
+          "<span>Конфигурация сохранена. Запустите анализ отзывов.</span>" +
+          '<button type="button" class="btn btn-sm btn-primary flex-shrink-0" id="btnBannerStartAnalyze" ' +
+          'aria-label="Запустить анализ отзывов">Запустить анализ</button></div>',
+      );
+    } else {
+      setStatusBannerHtml("");
     }
   }
 
@@ -559,30 +588,11 @@
     const res = await fetch(`/api/projects/${projectId}`);
     const p = await res.json();
     if (!res.ok) throw new Error(typeof p.detail === "string" ? p.detail : JSON.stringify(p.detail));
-    if (p.phase !== "analyzing") {
-      clearAnalyzeSessionFlag();
-    }
     if (p.phase === "analyzing") {
-      let allow = false;
-      try {
-        allow = sessionStorage.getItem(ANALYZE_SESSION_KEY) === "1";
-      } catch {
-        allow = false;
-      }
-      if (!allow) {
-        globalThis.location.replace("/");
-        return p;
-      }
+      globalThis.location.replace("/");
+      return p;
     }
     applyPhase(p);
-    if (p.phase === "analyzing" && p.last_job_id) {
-      try {
-        await pollJob(p.last_job_id);
-      } catch (e) {
-        document.getElementById("jobStatus").textContent = esc(e.message);
-      }
-      return loadProject();
-    }
     if (p.phase === "complete") {
       tableFacetsLoaded = false;
       tableSkip = 0;
@@ -590,28 +600,9 @@
       await loadDashboard();
       await loadInsightDisplay();
     }
+    syncTopicCountFromProject(p);
+    syncNotificationEmailFromProject(p);
     return p;
-  }
-
-  function setJobStatusPolling() {
-    const statusEl = document.getElementById("jobStatus");
-    statusEl.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2 ra-js-analyze-poll" role="status" aria-live="polite" aria-atomic="true">
-      <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-      <span class="ra-js-analyze-poll-text">Анализ выполняется, пожалуйста подождите…</span>
-    </div>`;
-  }
-
-  async function pollJob(jobId) {
-    setJobStatusPolling();
-    for (let i = 0; i < 180; i++) {
-      const res = await fetch(`/api/projects/jobs/${jobId}`);
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.detail || "Ошибка статуса");
-      if (j.status === "completed") return;
-      if (j.status === "failed") throw new Error(j.error_message || "Ошибка анализа");
-      await new Promise((r) => setTimeout(r, 1500));
-    }
-    throw new Error("Превышено время ожидания анализа");
   }
 
   /** Доли % для графика: скользящее среднее по «сырым» долям, затем округление; линии без лишних десятичных. */
@@ -890,7 +881,8 @@
         const h = `h${accId}${i}`;
         const c = `c${accId}${i}`;
         const topics = (r.topics || []).join(", ");
-        html += `<div class="accordion-item">
+        const itemClass = `accordion-item ra-reviews-by-date__item ${sentimentModalItemClass(r.sentiment)}`;
+        html += `<div class="${itemClass}">
           <h2 class="accordion-header h6 mb-0" id="${h}">
             <button class="accordion-button${i ? " collapsed" : ""}" type="button" data-bs-toggle="collapse"
                     data-bs-target="#${c}" aria-expanded="${i ? "false" : "true"}" aria-controls="${c}">
@@ -1095,7 +1087,10 @@
   function rebuildTableHeaderForFilters(filterCols) {
     const tr = document.getElementById("resultsTableHeadRow");
     if (!tr) return;
-    while (tr.children.length > 5) tr.removeChild(tr.children[4]);
+    // Фиксировано: тональность, тема, [фильтры], текст
+    while (tr.children.length > 3) {
+      tr.removeChild(tr.children[2]);
+    }
     for (const col of filterCols) {
       const th = document.createElement("th");
       th.textContent = col;
@@ -1114,10 +1109,7 @@
       true,
       (v) => SENTIMENT_RU[normalizeSentiment(String(v))] || String(v),
     );
-    fillSelectOptions(document.getElementById("filterTopic1"), f.topics_1 || [], true);
-    fillSelectOptions(document.getElementById("filterTopic2"), f.topics_2 || [], true);
-    fillSelectOptions(document.getElementById("filterTopic3"), f.topics_3 || [], true);
-    fillSelectOptions(document.getElementById("filterTopicAny"), f.topics_any || [], true);
+    fillSelectOptions(document.getElementById("filterTopic"), f.topics || [], true);
     tableFilterColumns = f.filter_columns || [];
     rebuildTableHeaderForFilters(tableFilterColumns);
     const wrap = document.getElementById("filterColumnsWrap");
@@ -1210,14 +1202,8 @@
     p.set("limit", String(TABLE_PAGE_SIZE));
     const s = document.getElementById("filterSentiment")?.value;
     if (s) p.set("sentiment", s);
-    const t1 = document.getElementById("filterTopic1")?.value;
-    if (t1) p.set("topic1", t1);
-    const t2 = document.getElementById("filterTopic2")?.value;
-    if (t2) p.set("topic2", t2);
-    const t3 = document.getElementById("filterTopic3")?.value;
-    if (t3) p.set("topic3", t3);
-    const ta = document.getElementById("filterTopicAny")?.value;
-    if (ta) p.set("topic_any", ta);
+    const t = document.getElementById("filterTopic")?.value;
+    if (t) p.set("topic", t);
     const q = document.getElementById("filterQ")?.value?.trim();
     if (q) p.set("q", q);
     const dq = document.getElementById("filterDateQ")?.value?.trim();
@@ -1404,11 +1390,9 @@
       const tr = document.createElement("tr");
       const t = r.topics || [];
       const t0 = t[0] != null ? esc(t[0]) : "—";
-      const t1 = t[1] != null ? esc(t[1]) : "—";
-      const t2 = t[2] != null ? esc(t[2]) : "—";
       const fd = r.filters || {};
       const filterCells = tableFilterColumns.map((c) => `<td>${esc(fd[c] != null ? String(fd[c]) : "—")}</td>`).join("");
-      tr.innerHTML = `<td>${sentimentPillHtml(r.sentiment)}</td><td>${t0}</td><td>${t1}</td><td>${t2}</td>${filterCells}`;
+      tr.innerHTML = `<td>${sentimentPillHtml(r.sentiment)}</td><td>${t0}</td>${filterCells}`;
       appendReviewTextCell(tr, r.text ?? "");
       tbody.append(tr);
     }
@@ -1454,11 +1438,22 @@
     }
   });
 
+  const topicCountEl = document.getElementById("topicCount");
+  topicCountEl?.addEventListener("input", (e) => {
+    const tr = e.target;
+    const tv = document.getElementById("topicCountValue");
+    if (tv) tv.textContent = tr.value;
+    tr.setAttribute("aria-valuenow", tr.value);
+  });
+
   document.getElementById("btnMapping").addEventListener("click", async () => {
     const text_column = document.getElementById("textColumn").value;
     const dateRaw = document.getElementById("dateColumn").value;
     const date_column = dateRaw || null;
     const filter_columns = Array.from(document.getElementById("filterColumns").selectedOptions).map((o) => o.value);
+    const topic_count = clampTopicCount(document.getElementById("topicCount")?.value ?? 10);
+    const ne = document.getElementById("notificationEmail")?.value?.trim() ?? "";
+    const notification_email = ne || null;
     const mapAlert = document.getElementById("mappingAlert");
     const btnMap = document.getElementById("btnMapping");
     show(mapAlert, "");
@@ -1468,22 +1463,39 @@
       const res = await fetch(`/api/projects/${projectId}/mapping`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text_column, date_column, filter_columns }),
+        body: JSON.stringify({ text_column, date_column, filter_columns, topic_count, notification_email }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
-      await loadProject();
-      setAnalyzeSessionFlag();
       const ares = await fetch(`/api/projects/${projectId}/analyze`, { method: "POST" });
       const adata = await ares.json();
       if (!ares.ok) {
         throw new Error(typeof adata.detail === "string" ? adata.detail : JSON.stringify(adata.detail));
       }
       leavePage = true;
-      globalThis.alert("Конфигурация сохранена, анализ запущен. Статус можно смотреть в списке проектов.");
+      try {
+        sessionStorage.setItem(PROJECTS_TOAST_KEY, "Анализ запущен. Статус отображается в списке проектов.");
+      } catch {
+        /* ignore */
+      }
       globalThis.location.assign("/");
     } catch (e) {
-      show(mapAlert, esc(e.message), "danger");
+      const msg = esc(e.message);
+      show(mapAlert, msg, "danger");
+      let p;
+      try {
+        p = await loadProject();
+      } catch {
+        /* leave phase UI as is */
+      }
+      if (p && p.phase === "awaiting_analysis") {
+        setStatusBannerHtml(
+          `<div class="alert alert-danger mb-0 d-flex flex-wrap align-items-center gap-2 justify-content-between" role="alert">` +
+            `<span class="ra-status-banner__msg flex-grow-1 min-w-0">${msg}</span>` +
+            '<button type="button" class="btn btn-sm btn-primary flex-shrink-0" id="btnBannerStartAnalyze" ' +
+            'aria-label="Запустить анализ">Запустить анализ</button></div>',
+        );
+      }
     } finally {
       if (!leavePage) {
         setButtonLoading(btnMap, false);
@@ -1491,45 +1503,41 @@
     }
   });
 
-  async function runAnalyzeFlow(loadingButton) {
-    if (!loadingButton) {
-      return;
-    }
-    setAnalyzeSessionFlag();
-    const otherAnalyze = ["btnAnalyze", "btnReanalyze"]
-      .map((id) => document.getElementById(id))
-      .find((el) => el && el !== loadingButton);
-    if (otherAnalyze) {
-      otherAnalyze.disabled = true;
-    }
-    const jobSt = document.getElementById("jobStatus");
-    jobSt.textContent = "";
-    jobSt.innerHTML = "";
-    setButtonLoading(loadingButton, true, "Запуск анализа…");
-    try {
-      const res = await fetch(`/api/projects/${projectId}/analyze`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
-      await pollJob(data.job_id);
-      await loadProject();
-    } catch (e) {
-      jobSt.textContent = esc(e.message);
-      await loadProject();
-    } finally {
-      setButtonLoading(loadingButton, false);
-      if (otherAnalyze) {
-        otherAnalyze.disabled = false;
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("#btnBannerStartAnalyze");
+    if (!btn) return;
+    e.preventDefault();
+    void (async () => {
+      btn.setAttribute("aria-busy", "true");
+      /** @type {HTMLButtonElement} */ (btn).disabled = true;
+      try {
+        const res = await fetch(`/api/projects/${projectId}/analyze`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+        }
+        try {
+          sessionStorage.setItem(PROJECTS_TOAST_KEY, "Анализ запущен. Статус — в списке проектов.");
+        } catch {
+          /* ignore */
+        }
+        globalThis.location.assign("/");
+      } catch (err) {
+        const msg = esc(err.message);
+        setStatusBannerHtml(
+          `<div class="alert alert-danger mb-0 d-flex flex-wrap align-items-center gap-2 justify-content-between" role="alert">` +
+            `<span class="ra-status-banner__msg flex-grow-1 min-w-0">${msg}</span>` +
+            '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" id="btnBannerStartAnalyze" ' +
+            "aria-label=\"Повторить запуск анализа\">Запустить анализ</button></div>",
+        );
+      } finally {
+        const el = document.getElementById("btnBannerStartAnalyze");
+        if (el) {
+          el.removeAttribute("aria-busy");
+          /** @type {HTMLButtonElement} */ (el).disabled = false;
+        }
       }
-    }
-  }
-
-  document.getElementById("btnAnalyze").addEventListener("click", (e) => {
-    runAnalyzeFlow(e.currentTarget);
-  });
-
-  document.getElementById("btnReanalyze")?.addEventListener("click", (e) => {
-    if (!globalThis.confirm("Запустить анализ заново? Текущие метки по строкам будут пересчитаны.")) return;
-    runAnalyzeFlow(e.currentTarget);
+    })();
   });
 
   document.getElementById("btnFilterApply")?.addEventListener("click", () => {
@@ -1538,10 +1546,7 @@
   });
   document.getElementById("btnFilterReset")?.addEventListener("click", () => {
     document.getElementById("filterSentiment").value = "";
-    document.getElementById("filterTopic1").value = "";
-    document.getElementById("filterTopic2").value = "";
-    document.getElementById("filterTopic3").value = "";
-    document.getElementById("filterTopicAny").value = "";
+    document.getElementById("filterTopic").value = "";
     document.getElementById("filterQ").value = "";
     document.getElementById("filterDateQ").value = "";
     for (const inp of document.querySelectorAll(".filter-col-input")) inp.value = "";

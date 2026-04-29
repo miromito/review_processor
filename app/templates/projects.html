@@ -6,6 +6,31 @@
   </div>
   <a class="btn btn-primary" href="/projects/new" aria-label="Создать новый проект">Новый проект</a>
 </div>
+<div
+  class="toast-container position-fixed top-0 end-0 p-3"
+  id="raProjectsToastWrap"
+  style="z-index: 1080"
+  aria-label="Всплывающие уведомления"
+>
+  <div
+    id="raProjectsToast"
+    class="toast align-items-center text-bg-success border-0"
+    role="status"
+    data-bs-autohide="true"
+    data-bs-delay="5000"
+    aria-atomic="true"
+  >
+    <div class="d-flex">
+      <div class="toast-body" id="raProjectsToastBody" aria-label="Текст уведомления"></div>
+      <button
+        type="button"
+        class="btn-close btn-close-white me-2 m-auto"
+        data-bs-dismiss="toast"
+        aria-label="Закрыть"
+      ></button>
+    </div>
+  </div>
+</div>
 <div id="projectsSearchWrap" class="projects-search mb-3 d-none">
   <label for="projectSearch" class="visually-hidden">Поиск проектов по названию</label>
   <input type="search" id="projectSearch" class="form-control" placeholder="Поиск по названию…" autocomplete="off"
@@ -25,7 +50,7 @@
         <th scope="col">Файл</th>
         <th scope="col">Строк</th>
         <th scope="col">Обновлён</th>
-        <th scope="col" class="text-end">Действия</th>
+        <th scope="col" class="text-end"><span class="visually-hidden">Меню</span></th>
       </tr>
     </thead>
     <tbody id="projectsBody"></tbody>

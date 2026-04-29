@@ -87,19 +87,13 @@ def filter_row_results(
     rows: list[RowResult],
     *,
     sentiment: str | None,
-    topic1: str | None,
-    topic2: str | None,
-    topic3: str | None,
-    topic_any: str | None,
+    topic: str | None,
     text_q: str | None,
     date_q: str | None,
     filter_substrings: dict[str, str],
 ) -> list[RowResult]:
     want_sent = _norm_sentiment_filter(sentiment)
-    t1 = topic1.strip().casefold() if topic1 and topic1.strip() else None
-    t2 = topic2.strip().casefold() if topic2 and topic2.strip() else None
-    t3 = topic3.strip().casefold() if topic3 and topic3.strip() else None
-    tany = topic_any.strip().casefold() if topic_any and topic_any.strip() else None
+    t_filter = topic.strip().casefold() if topic and topic.strip() else None
     q = text_q.strip().casefold() if text_q and text_q.strip() else None
     dq = date_q.strip().casefold() if date_q and date_q.strip() else None
 
@@ -108,17 +102,8 @@ def filter_row_results(
         if want_sent:
             if _canonical_row_sentiment(r.sentiment) != want_sent:
                 return False
-        if t1 is not None:
-            if (_topic_slot(topics, 0) or "").casefold() != t1:
-                return False
-        if t2 is not None:
-            if (_topic_slot(topics, 1) or "").casefold() != t2:
-                return False
-        if t3 is not None:
-            if (_topic_slot(topics, 2) or "").casefold() != t3:
-                return False
-        if tany is not None:
-            if not any(tany in (str(x).casefold()) for x in topics if x):
+        if t_filter is not None:
+            if (_topic_slot(topics, 0) or "").casefold() != t_filter:
                 return False
         if q is not None:
             if q not in (r.text or "").casefold():
@@ -137,26 +122,13 @@ def filter_row_results(
 
 def build_results_facets(rows: list[RowResult], filter_column_names: list[str]) -> dict[str, Any]:
     sents: set[str] = set()
-    slot0: set[str] = set()
-    slot1: set[str] = set()
-    slot2: set[str] = set()
-    any_topics: set[str] = set()
+    topic_set: set[str] = set()
 
     for r in rows:
         sents.add(_canonical_row_sentiment(r.sentiment))
-        topics = r.topics or []
-        for i, t in enumerate(topics[:3]):
-            if isinstance(t, str) and t.strip():
-                ts = t.strip()
-                if i == 0:
-                    slot0.add(ts)
-                elif i == 1:
-                    slot1.add(ts)
-                elif i == 2:
-                    slot2.add(ts)
-        for t in topics:
-            if isinstance(t, str) and t.strip():
-                any_topics.add(t.strip())
+        t0 = _topic_slot(r.topics, 0)
+        if t0 is not None:
+            topic_set.add(t0)
 
     def sortu(xs: set[str]) -> list[str]:
         return sorted(xs, key=str.casefold)
@@ -175,10 +147,7 @@ def build_results_facets(rows: list[RowResult], filter_column_names: list[str]) 
     filter_choices = {c: sortu(per_col.get(c, set())) for c in filter_labels}
     return {
         "sentiments": sortu(sents),
-        "topics_1": sortu(slot0),
-        "topics_2": sortu(slot1),
-        "topics_3": sortu(slot2),
-        "topics_any": sortu(any_topics),
+        "topics": sortu(topic_set),
         "filter_columns": filter_labels,
         "filter_choices": filter_choices,
     }

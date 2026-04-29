@@ -1,24 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="narrow-form mx-auto">
-  <h1 class="page-title mb-3">Вход</h1>
-  <p class="text-muted small mb-3">Введите логин и пароль из настроек сервера (переменные окружения).</p>
-  <form id="loginForm" class="card" novalidate>
-    <div class="card-body">
-      <div class="mb-3">
-        <label class="form-label" for="loginUsername">Логин</label>
-        <input class="form-control" type="text" id="loginUsername" name="username" required autocomplete="username"
-               aria-label="Логин">
-      </div>
-      <div class="mb-3">
-        <label class="form-label" for="loginPassword">Пароль</label>
-        <input class="form-control" type="password" id="loginPassword" name="password" required autocomplete="current-password"
-               aria-label="Пароль">
-      </div>
-      <button type="submit" class="btn btn-primary" aria-label="Войти в приложение">Войти</button>
-      <div id="loginAlert" class="mt-3" role="status"></div>
+<div class="ra-auth-login">
+  <div class="ra-auth-login__brand">
+    <img
+      class="ra-auth-login__logo"
+      src="/static/logo.svg"
+      width="64"
+      height="64"
+      alt=""
+      role="presentation"
+    />
+    <h1 class="ra-auth-login__app-name">Анализ отзывов</h1>
+  </div>
+  <div class="ra-auth-login__card card shadow-sm border-0">
+    <div class="card-body p-4 p-sm-5">
+      <h2 class="h5 text-center mb-4" id="loginHeading">Вход</h2>
+      <form id="loginForm" novalidate aria-labelledby="loginHeading">
+        <div class="mb-3">
+          <label class="form-label" for="loginUsername">Логин</label>
+          <input
+            class="form-control"
+            type="text"
+            id="loginUsername"
+            name="username"
+            required
+            autocomplete="username"
+            aria-label="Логин"
+          />
+        </div>
+        <div class="mb-4">
+          <label class="form-label" for="loginPassword">Пароль</label>
+          <input
+            class="form-control"
+            type="password"
+            id="loginPassword"
+            name="password"
+            required
+            autocomplete="current-password"
+            aria-label="Пароль"
+          />
+        </div>
+        <button type="submit" class="btn btn-primary w-100" aria-label="Войти в приложение">Войти</button>
+        <div id="loginAlert" class="mt-3" role="status"></div>
+      </form>
     </div>
-  </form>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}

@@ -62,6 +62,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _clamp_topic_count(raw: Any) -> int:
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = 10
+    return max(3, min(20, n))
+
+
 def _chart_filter_substrings(request: Request, project: dict[str, Any]) -> dict[str, str]:
     fc: dict[str, str] = {}
     for col in project.get("filter_columns") or []:
@@ -91,6 +99,8 @@ def _project_to_detail(doc: dict[str, Any]) -> ProjectDetail:
         updated_at=doc.get("updated_at"),
         business_insight=doc.get("business_insight"),
         business_insight_at=doc.get("business_insight_at"),
+        topic_count=_clamp_topic_count(doc.get("topic_count")),
+        notification_email=doc.get("notification_email"),
     )
 
 
@@ -206,6 +216,8 @@ async def upload_file(
                 "k_rows": None,
                 "tokens_used": None,
                 "token_limit_t": None,
+                "topic_count": None,
+                "notification_email": None,
                 "error_message": None,
             }
         },
@@ -273,6 +285,8 @@ async def update_mapping(
                 "m_rows": m,
                 "tokens_used": used,
                 "token_limit_t": settings.token_limit_t,
+                "topic_count": _clamp_topic_count(body.topic_count),
+                "notification_email": body.notification_email,
                 "phase": "awaiting_analysis",
                 "updated_at": now,
             }
@@ -298,7 +312,7 @@ async def start_analyze(
     settings: SettingsDep,
 ) -> JobStatusResponse:
     if not settings.openai_api_key:
-        raise HTTPException(503, "Сервер не настроен: задайте OPENAI_API_KEY")
+        raise HTTPException(503, "Анализ сейчас недоступен. Обратитесь к администратору.")
 
     oid = _oid(project_id)
     project = await projects_coll(db).find_one({"_id": oid})
@@ -355,7 +369,7 @@ async def scatter_points(
     request: Request,
     date_from: str | None = None,
     date_to: str | None = None,
-    chart_topic: str | None = Query(None, description="Поиск по вхождению в любую из тем отзыва"),
+    chart_topic: str | None = Query(None, description="Поиск по вхождению в тему отзыва"),
     group_by: str = Query("day", description="Группировка по времени: day, week, month, quarter, year"),
 ) -> ScatterResponse:
     _oid(project_id)
@@ -394,7 +408,7 @@ async def reviews_by_date(
     request: Request,
     date: Annotated[str, Query(description="Дата начала (YYYY-MM-DD); с date_to — диапазон включительно")],
     date_to: str | None = Query(None, description="Конец диапазона YYYY-MM-DD, включительно"),
-    chart_topic: str | None = Query(None, description="Поиск по вхождению в любую из тем"),
+    chart_topic: str | None = Query(None, description="Поиск по вхождению в тему отзыва"),
 ) -> ReviewsByDateResponse:
     _oid(project_id)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
@@ -500,10 +514,7 @@ async def list_results(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     sentiment: str | None = None,
-    topic1: str | None = None,
-    topic2: str | None = None,
-    topic3: str | None = None,
-    topic_any: str | None = None,
+    topic: str | None = Query(None, description="Точное соответствие единственной теме отзыва"),
     q: str | None = None,
     date_q: str | None = None,
 ) -> ResultsPage:
@@ -522,10 +533,7 @@ async def list_results(
     filtered = filter_row_results(
         all_rows,
         sentiment=sentiment,
-        topic1=topic1,
-        topic2=topic2,
-        topic3=topic3,
-        topic_any=topic_any,
+        topic=topic,
         text_q=q,
         date_q=date_q,
         filter_substrings=fc,
@@ -567,7 +575,7 @@ async def project_dashboard(
     request: Request,
     date_from: str | None = None,
     date_to: str | None = None,
-    chart_topic: str | None = Query(None, description="Поиск по вхождению в любую из тем отзыва"),
+    chart_topic: str | None = Query(None, description="Поиск по вхождению в тему отзыва"),
 ) -> DashboardResponse:
     _oid(project_id)
     project = await projects_coll(db).find_one({"_id": ObjectId(project_id)})

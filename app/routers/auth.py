@@ -19,7 +19,7 @@ def _settings_dep() -> Settings:
 @router.post("/login")
 async def login(response: Response, body: LoginBody, settings: Settings = Depends(_settings_dep)):
     if not auth_enabled(settings):
-        raise HTTPException(503, "Вход отключён: не задан AUTH_USERNAME")
+        raise HTTPException(503, "Вход в приложение сейчас отключён.")
     if not verify_credentials(body.username, body.password, settings):
         raise HTTPException(401, "Неверный логин или пароль")
     token = create_access_token(settings)

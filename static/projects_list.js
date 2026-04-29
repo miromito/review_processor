@@ -4,6 +4,7 @@
   const alertBox = document.getElementById("listAlert");
   const searchWrap = document.getElementById("projectsSearchWrap");
   const searchInput = document.getElementById("projectSearch");
+  const PROJECTS_TOAST_KEY = "ra_projects_toast";
 
   let cachedProjects = [];
 
@@ -18,6 +19,27 @@
 
   function esc(s) {
     return String(s || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  }
+
+  function showPostRedirectToast() {
+    let message = "";
+    try {
+      message = sessionStorage.getItem(PROJECTS_TOAST_KEY) || "";
+    } catch {
+      return;
+    }
+    if (!message) return;
+    try {
+      sessionStorage.removeItem(PROJECTS_TOAST_KEY);
+    } catch {
+      /* ignore */
+    }
+    const toastEl = document.getElementById("raProjectsToast");
+    const bodyEl = document.getElementById("raProjectsToastBody");
+    const T = globalThis;
+    if (!toastEl || !bodyEl || !T.bootstrap) return;
+    bodyEl.textContent = message;
+    new T.bootstrap.Toast(toastEl, { autohide: true, delay: 5000 }).show();
   }
 
   function formatDt(iso) {
@@ -54,11 +76,28 @@
         </svg>
       </div>`;
     }
+    if (p.phase === "awaiting_file" || p.phase === "awaiting_mapping" || p.phase === "awaiting_analysis") {
+      return `<div class="ra-project-status text-warning" title="Настройка не завершена" role="img" aria-label="Настройка не завершена">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+          <path d="M8.982 1.406a.13.13 0 0 0-.196 0L.504 12.3a.13.13 0 0 0 .196.2h14.3a.13.13 0 0 0 .196-.2L8.982 1.406zM8.002 3.5A.75.75 0 0 1 8.75 4v2.5a.75.75 0 0 1-1.5 0V4a.75.75 0 0 1 .75-.75zm.002 6a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0z"/>
+        </svg>
+      </div>`;
+    }
     return '<span class="text-muted" aria-hidden="true">—</span>';
   }
 
-  function showOpenAction(p) {
-    return p.phase !== "analyzing" && p.phase !== "error";
+  const ICON_THREE_DOTS = `<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" class="d-block" aria-hidden="true" focusable="false"><path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/></svg>`;
+
+  function projectDeleteMenu(p) {
+    const id = esc(p.id);
+    return `<div class="dropdown text-end">
+  <button type="button" class="btn btn-sm btn-link text-body-secondary p-1 ra-project-menu-btn" data-bs-toggle="dropdown" data-bs-container="body" data-bs-offset="0,4" data-bs-auto-close="true" aria-expanded="false" aria-label="Меню с действиями по проекту">
+    ${ICON_THREE_DOTS}
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+    <li><button type="button" class="dropdown-item text-danger" data-action="delete-project" data-project-id="${id}">Удалить</button></li>
+  </ul>
+</div>`;
   }
 
   function renderMobileItem(p) {
@@ -72,26 +111,27 @@
       ? `<span class="fw-semibold d-block text-truncate">${name}</span>`
       : `<a class="fw-semibold text-decoration-none d-block text-truncate" href="/projects/${id}">${name}</a>`;
     return `
-      <div class="ra-swipe-item" data-project-id="${id}">
-        <div class="ra-swipe-actions">
-          <button type="button" class="btn btn-danger btn-sm ra-swipe-delete" data-action="delete-project"
-                  data-project-id="${id}" aria-label="Удалить проект ${name || id}">Удалить</button>
-        </div>
-        <div class="ra-swipe-content">
-          <div class="d-flex justify-content-between align-items-start gap-2">
-            <div class="d-flex align-items-start gap-2 min-w-0">
-              ${projectStatusIndicator(p)}
-              <div class="min-w-0 flex-grow-1">
-              ${titleRow}
-              <div class="small text-muted text-truncate">${file}</div>
+      <div class="list-group-item" data-project-id="${id}">
+        <div class="d-flex align-items-start gap-2">
+          <div class="d-flex align-items-start gap-2 min-w-0 flex-grow-1">
+            ${projectStatusIndicator(p)}
+            <div class="min-w-0 flex-grow-1">
+              <div class="d-flex align-items-start justify-content-between gap-2">
+                <div class="min-w-0">
+                  ${titleRow}
+                  <div class="small text-muted text-truncate">${file}</div>
+                </div>
+                <div class="d-flex align-items-start gap-1 flex-shrink-0">
+                  <span class="badge bg-secondary">${phase}</span>
+                  ${projectDeleteMenu(p)}
+                </div>
               </div>
             </div>
-            <span class="badge bg-secondary flex-shrink-0">${phase}</span>
           </div>
-          <div class="d-flex justify-content-between gap-2 small text-muted mt-2">
-            <span>${rows} строк</span>
-            <span class="text-nowrap">${esc(dt)}</span>
-          </div>
+        </div>
+        <div class="d-flex justify-content-between gap-2 small text-muted mt-2 pt-2 border-top">
+          <span>${rows} строк</span>
+          <span class="text-nowrap">${esc(dt)}</span>
         </div>
       </div>`;
   }
@@ -108,10 +148,6 @@
     for (const p of projects) {
       const tr = document.createElement("tr");
       const dt = formatDt(p.updated_at);
-      const delLabel = `Удалить проект ${p.name || p.id}`;
-      const openLink = showOpenAction(p)
-        ? `<a class="btn btn-sm btn-outline-primary" href="/projects/${esc(p.id)}" aria-label="Открыть проект">Открыть</a>`
-        : "";
       tr.innerHTML = `
           <td class="ra-project-name-cell">${projectNameCell(p)}</td>
           <td class="ra-project-col-status text-center">${projectStatusIndicator(p)}</td>
@@ -119,17 +155,15 @@
           <td>${esc(p.filename || "—")}</td>
           <td>${p.m_rows ?? 0}</td>
           <td class="small">${dt}</td>
-          <td class="text-end text-nowrap">
-            ${openLink}
-            <button type="button" class="btn btn-sm btn-outline-danger ${openLink ? "ms-1" : ""}" data-action="delete-project"
-                    data-project-id="${esc(p.id)}" aria-label="${esc(delLabel)}">Удалить</button>
-          </td>`;
+          <td class="text-end text-nowrap">${projectDeleteMenu(p)}</td>`;
       tbody.append(tr);
       if (mobileList) {
-        const wrap = document.createElement("div");
-        wrap.className = "list-group-item p-0 border-0";
-        wrap.innerHTML = renderMobileItem(p);
-        mobileList.append(wrap.firstElementChild);
+        const w = document.createElement("div");
+        w.innerHTML = renderMobileItem(p).trim();
+        const node = w.firstElementChild;
+        if (node) {
+          mobileList.append(node);
+        }
       }
     }
   }
@@ -182,9 +216,9 @@
   async function handleDeleteClick(btn) {
     const id = btn.getAttribute("data-project-id");
     if (!id) return;
-    const row = btn.closest("tr");
-    const nameCell = row?.querySelector("td:first-child");
-    const displayName = nameCell?.textContent?.trim() || id;
+    const proj = cachedProjects.find((x) => x.id === id);
+    const displayName =
+      proj && proj.name != null && String(proj.name).trim() ? String(proj.name).trim() : id;
     if (!globalThis.confirm(`Удалить проект «${displayName}» и все данные безвозвратно?`)) return;
     btn.disabled = true;
     try {
@@ -218,76 +252,6 @@
     }
   });
 
-  function setupSwipe() {
-    if (!mobileList) return;
-    const MAX = -96;
-    let active = null;
-    let startX = 0;
-    let startY = 0;
-    let cur = 0;
-    let dragging = false;
-
-    function closeAll(except) {
-      for (const el of mobileList.querySelectorAll(".ra-swipe-item.is-open")) {
-        if (except && el === except) continue;
-        el.classList.remove("is-open");
-        el.style.setProperty("--ra-swipe-x", "0px");
-      }
-    }
-
-    mobileList.addEventListener("pointerdown", (e) => {
-      const item = e.target.closest(".ra-swipe-item");
-      if (!item) return;
-      const content = item.querySelector(".ra-swipe-content");
-      if (!content) return;
-      active = item;
-      startX = e.clientX;
-      startY = e.clientY;
-      cur = Number.parseFloat(getComputedStyle(item).getPropertyValue("--ra-swipe-x")) || 0;
-      dragging = false;
-      closeAll(item);
-      content.setPointerCapture?.(e.pointerId);
-    }, { passive: true });
-
-    mobileList.addEventListener("pointermove", (e) => {
-      if (!active) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (!dragging) {
-        if (Math.abs(dx) < 8) return;
-        if (Math.abs(dy) > Math.abs(dx)) {
-          active = null;
-          return;
-        }
-        dragging = true;
-      }
-      e.preventDefault();
-      const x = Math.max(MAX, Math.min(0, cur + dx));
-      active.style.setProperty("--ra-swipe-x", `${x}px`);
-    }, { passive: false });
-
-    mobileList.addEventListener("pointerup", () => {
-      if (!active) return;
-      const x = Number.parseFloat(getComputedStyle(active).getPropertyValue("--ra-swipe-x")) || 0;
-      const open = x < MAX / 2;
-      if (open) {
-        active.classList.add("is-open");
-        active.style.setProperty("--ra-swipe-x", `${MAX}px`);
-      } else {
-        active.classList.remove("is-open");
-        active.style.setProperty("--ra-swipe-x", "0px");
-      }
-      active = null;
-    });
-
-    mobileList.addEventListener("pointercancel", () => {
-      if (!active) return;
-      active.classList.remove("is-open");
-      active.style.setProperty("--ra-swipe-x", "0px");
-      active = null;
-    });
-  }
-
-  setupSwipe();
+  showPostRedirectToast();
   load();
 })();

@@ -23,7 +23,12 @@ def _template_show_auth_nav() -> bool:
     return auth_enabled(get_settings())
 
 
+def _template_user_logged_in(request: Request) -> bool:
+    return bool(getattr(request.state, "logged_in", True))
+
+
 templates.env.globals["show_auth_nav"] = _template_show_auth_nav
+templates.env.globals["user_logged_in"] = _template_user_logged_in
 
 
 def _public_route(path: str, method: str) -> bool:
@@ -82,12 +87,17 @@ app = FastAPI(title="Анализ отзывов", lifespan=lifespan)
 @app.middleware("http")
 async def jwt_cookie_auth(request: Request, call_next):
     settings = get_settings()
+    token = _request_token(request)
+    if not auth_enabled(settings):
+        request.state.logged_in = True
+    else:
+        request.state.logged_in = bool(token and verify_token(token, settings))
+
     if not auth_enabled(settings):
         return await call_next(request)
     if _public_route(request.url.path, request.method):
         return await call_next(request)
-    token = _request_token(request)
-    if token and verify_token(token, settings):
+    if request.state.logged_in:
         return await call_next(request)
     if request.url.path.startswith("/api"):
         return JSONResponse({"detail": "Требуется вход"}, status_code=401)
