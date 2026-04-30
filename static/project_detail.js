@@ -1334,13 +1334,15 @@
     }
   }
 
+  const REVIEW_ROW_SELECTOR = "#resultsTable tbody tr, #resultsMobileList .ra-review-mobile-card";
+
   function syncExpandAllReviewsLabel() {
     const master = document.getElementById("btnReviewsExpandAll");
     if (!master) return;
     const expandableBodies = [];
-    for (const tr of document.querySelectorAll("#resultsTable tbody tr")) {
-      const body = tr.querySelector(".ra-review-text-body");
-      const btn = tr.querySelector(".ra-row-expand-btn");
+    for (const row of document.querySelectorAll(REVIEW_ROW_SELECTOR)) {
+      const body = row.querySelector(".ra-review-text-body");
+      const btn = row.querySelector(".ra-row-expand-btn");
       if (!body || !btn || btn.classList.contains("d-none")) continue;
       expandableBodies.push(body);
     }
@@ -1359,21 +1361,43 @@
     );
   }
 
-  function appendReviewTextCell(tr, rawText) {
-    const td = document.createElement("td");
-    td.className = "ra-review-text-cell";
+  function syncMobileReviewTextButton(btn, textBody) {
+    if (!btn || !textBody) return;
+    const collapsed = textBody.classList.contains("ra-review-text-collapsed");
+    btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+    btn.setAttribute("aria-expanded", String(!collapsed));
+    btn.setAttribute("aria-label", collapsed ? "Развернуть текст отзыва" : "Свернуть текст отзыва");
+  }
+
+  /**
+   * @param {HTMLElement} parent
+   * @param {string} rawText
+   * @param {{ variant?: "table" | "mobileCard" }} [options]
+   */
+  function appendReviewTextStack(parent, rawText, options) {
+    const variant = options?.variant || "table";
     const text = String(rawText ?? "");
     const longText = text.length > REVIEW_COLLAPSE_MIN_CHARS;
+    const isMobileCard = variant === "mobileCard";
     const stack = document.createElement("div");
     stack.className = "ra-review-text-stack";
+    if (isMobileCard) {
+      stack.dataset.raMobileReviewStack = "1";
+    }
     const textBody = document.createElement("div");
-    textBody.className = longText ? "ra-review-text-body ra-review-text-collapsed text-break" : "ra-review-text-body text-break";
-    textBody.textContent = text;
-    if (!longText) {
-      textBody.dataset.raShort = "1";
+    if (isMobileCard) {
+      textBody.className = "ra-review-text-body ra-review-text-collapsed text-break";
+      textBody.textContent = text;
+    } else {
+      textBody.className = longText ? "ra-review-text-body ra-review-text-collapsed text-break" : "ra-review-text-body text-break";
+      textBody.textContent = text;
+      if (!longText) {
+        textBody.dataset.raShort = "1";
+      }
     }
     stack.append(textBody);
-    if (longText) {
+    const showTextToggle = isMobileCard ? text.length > 0 : longText;
+    if (showTextToggle) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ra-row-expand-btn ra-review-expand-link";
@@ -1381,17 +1405,159 @@
       btn.setAttribute("aria-label", "Развернуть текст отзыва");
       btn.textContent = "Развернуть";
       stack.append(btn);
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
         textBody.classList.toggle("ra-review-text-collapsed");
-        const collapsed = textBody.classList.contains("ra-review-text-collapsed");
-        btn.textContent = collapsed ? "Развернуть" : "Свернуть";
-        btn.setAttribute("aria-expanded", String(!collapsed));
-        btn.setAttribute("aria-label", collapsed ? "Развернуть текст отзыва" : "Свернуть текст отзыва");
+        syncMobileReviewTextButton(btn, textBody);
         syncExpandAllReviewsLabel();
       });
     }
-    td.append(stack);
+    parent.append(stack);
+  }
+
+  function appendReviewTextCell(tr, rawText) {
+    const td = document.createElement("td");
+    td.className = "ra-review-text-cell";
+    appendReviewTextStack(td, rawText, { variant: "table" });
     tr.append(td);
+  }
+
+  function toggleMobileCardReviewText(art) {
+    const textBody = art.querySelector(".ra-review-text-body");
+    const btn = art.querySelector(".ra-row-expand-btn");
+    if (!textBody) return;
+    textBody.classList.toggle("ra-review-text-collapsed");
+    if (btn) syncMobileReviewTextButton(btn, textBody);
+    syncExpandAllReviewsLabel();
+  }
+
+  function mobileReviewCardToneClass(raw) {
+    const k = normalizeSentiment(String(raw));
+    if (k === "positive") return "ra-review-mobile-card--positive";
+    if (k === "negative") return "ra-review-mobile-card--negative";
+    if (k === "neutral") return "ra-review-mobile-card--neutral";
+    return "ra-review-mobile-card--other";
+  }
+
+  function buildMobileReviewMetaInnerHtml(r) {
+    const t = r.topics || [];
+    const t0 = t[0] != null ? esc(String(t[0])) : "—";
+    const kws = (r.keywords || []).filter(Boolean).map((x) => esc(String(x))).join(", ") || "—";
+    const fd = r.filters || {};
+    const filterRows = tableFilterColumns
+      .map((c) => {
+        const v = fd[c] != null ? esc(String(fd[c])) : "—";
+        return `<div class="ra-review-mobile-card__field"><span class="ra-review-mobile-card__label">${esc(c)}</span><span class="ra-review-mobile-card__val">${v}</span></div>`;
+      })
+      .join("");
+    return (
+      `<div class="ra-review-mobile-card__field"><span class="ra-review-mobile-card__label">Тональность</span><span class="ra-review-mobile-card__val">${sentimentPillHtml(r.sentiment)}</span></div>` +
+      `<div class="ra-review-mobile-card__field"><span class="ra-review-mobile-card__label">Тема</span><span class="ra-review-mobile-card__val">${t0}</span></div>` +
+      `<div class="ra-review-mobile-card__field"><span class="ra-review-mobile-card__label">Ключевые слова</span><span class="ra-review-mobile-card__val">${kws}</span></div>` +
+      filterRows
+    );
+  }
+
+  function createMobileReviewCard(r) {
+    const art = document.createElement("article");
+    art.className = `ra-review-mobile-card ${mobileReviewCardToneClass(r.sentiment)}`;
+    art.setAttribute("role", "listitem");
+    art.setAttribute("tabindex", "0");
+    art.setAttribute("aria-expanded", "false");
+    art.setAttribute(
+      "aria-label",
+      "Текст отзыва. Касание карточки — тема и поля. Свайп влево или вправо по тексту — развернуть или свернуть текст. Клавиши со стрелками влево и вправо — то же для текста.",
+    );
+
+    const main = document.createElement("div");
+    main.className = "ra-review-mobile-card__main";
+    appendReviewTextStack(main, r.text ?? "", { variant: "mobileCard" });
+
+    const meta = document.createElement("div");
+    meta.className = "ra-review-mobile-card__meta";
+    meta.setAttribute("hidden", "");
+    meta.innerHTML = buildMobileReviewMetaInnerHtml(r);
+
+    const toggleMeta = () => {
+      const open = meta.hasAttribute("hidden");
+      if (open) {
+        meta.removeAttribute("hidden");
+        art.classList.add("ra-review-mobile-card--meta-open");
+        art.setAttribute("aria-expanded", "true");
+      } else {
+        meta.setAttribute("hidden", "");
+        art.classList.remove("ra-review-mobile-card--meta-open");
+        art.setAttribute("aria-expanded", "false");
+      }
+    };
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchActive = false;
+
+    art.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) {
+          touchActive = false;
+          return;
+        }
+        const p = e.changedTouches[0];
+        touchStartX = p.clientX;
+        touchStartY = p.clientY;
+        touchActive = true;
+      },
+      { passive: true },
+    );
+
+    art.addEventListener("touchcancel", () => {
+      touchActive = false;
+    });
+
+    art.addEventListener(
+      "touchend",
+      (e) => {
+        if (!touchActive) return;
+        touchActive = false;
+        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) return;
+        const p = e.changedTouches[0];
+        const dx = p.clientX - touchStartX;
+        const dy = p.clientY - touchStartY;
+        const minDx = 44;
+        if (Math.abs(dx) < minDx || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+        toggleMobileCardReviewText(art);
+        art.dataset.raSwipeTextToggle = "1";
+        globalThis.setTimeout(() => {
+          delete art.dataset.raSwipeTextToggle;
+        }, 450);
+      },
+      { passive: true },
+    );
+
+    art.addEventListener("click", (e) => {
+      if (art.dataset.raSwipeTextToggle === "1") {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (e.target.closest(".ra-row-expand-btn")) return;
+      if (e.target.closest(".ra-review-mobile-card__meta")) return;
+      toggleMeta();
+    });
+    art.addEventListener("keydown", (e) => {
+      if (e.target.closest(".ra-row-expand-btn")) return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        toggleMobileCardReviewText(art);
+        return;
+      }
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      toggleMeta();
+    });
+
+    art.append(main, meta);
+    return art;
   }
 
   function buildResultsQuery() {
@@ -1546,9 +1712,11 @@
     const tbody = document.querySelector("#resultsTable tbody");
     const res = await fetch(`/api/projects/${projectId}/results?${buildResultsQuery()}`);
     const page = await res.json();
+    const mobileList = document.getElementById("resultsMobileList");
     if (!res.ok) {
       metaText("Не удалось загрузить таблицу.");
       tbody.innerHTML = "";
+      if (mobileList) mobileList.innerHTML = "";
       clearTablePager();
       for (const bid of ["btnTablePrev", "btnTablePrevTop", "btnTableNext", "btnTableNextTop"]) {
         const b = document.getElementById(bid);
@@ -1586,6 +1754,7 @@
     }
     updateTablePagerUI(total, skip);
     tbody.innerHTML = "";
+    if (mobileList) mobileList.innerHTML = "";
     for (const r of rows) {
       const tr = document.createElement("tr");
       const t = r.topics || [];
@@ -1596,10 +1765,11 @@
       tr.innerHTML = `<td>${sentimentPillHtml(r.sentiment)}</td><td>${t0}</td><td class="small">${kws}</td>${filterCells}`;
       appendReviewTextCell(tr, r.text ?? "");
       tbody.append(tr);
+      if (mobileList) mobileList.append(createMobileReviewCard(r));
     }
     globalThis.requestAnimationFrame(() => {
       globalThis.requestAnimationFrame(() => {
-        for (const row of tbody.querySelectorAll("tr")) {
+        for (const row of document.querySelectorAll("#resultsTable tbody tr")) {
           const body = row.querySelector(".ra-review-text-body");
           const btn = row.querySelector(".ra-row-expand-btn");
           if (!body || !btn) continue;
@@ -1817,9 +1987,9 @@
 
   document.getElementById("btnReviewsExpandAll")?.addEventListener("click", () => {
     const expandable = [];
-    for (const tr of document.querySelectorAll("#resultsTable tbody tr")) {
-      const body = tr.querySelector(".ra-review-text-body");
-      const btn = tr.querySelector(".ra-row-expand-btn");
+    for (const row of document.querySelectorAll(REVIEW_ROW_SELECTOR)) {
+      const body = row.querySelector(".ra-review-text-body");
+      const btn = row.querySelector(".ra-row-expand-btn");
       if (!body || !btn || btn.classList.contains("d-none")) continue;
       expandable.push({ body, btn });
     }

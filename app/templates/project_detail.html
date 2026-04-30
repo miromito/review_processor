@@ -397,7 +397,19 @@
           </div>
         </div>
         <div class="card-body p-0">
-          <div class="table-responsive ra-table-inline px-3 py-3">
+          <div class="d-md-none px-3 pt-3 pb-3">
+            <details class="ra-reviews-mobile-guide small border rounded px-2 py-2 mb-3 ra-hint bg-white">
+              <summary class="fw-semibold text-secondary user-select-none"
+                       aria-label="Справка: действия с карточками отзывов">Жесты и касания</summary>
+              <ul class="ra-reviews-mobile-guide__list text-muted mb-0 ps-3 mt-2">
+                <li class="mb-1"><strong class="text-secondary">Касание</strong> по карточке — показать или скрыть тему, ключевые слова и дополнительные поля.</li>
+                <li class="mb-1"><strong class="text-secondary">Свайп влево или вправо</strong> по области текста — развернуть или свернуть полный текст отзыва.</li>
+                <li class="mb-0">Под текстом можно нажать «Развернуть» — то же, что свайп (удобно без жестов).</li>
+              </ul>
+            </details>
+            <div id="resultsMobileList" class="ra-results-mobile-list" role="list" aria-label="Отзывы карточками"></div>
+          </div>
+          <div class="table-responsive ra-table-inline px-3 py-3 d-none d-md-block">
             <table class="table table-hover ra-data-table mb-0" id="resultsTable" aria-label="Результаты по строкам">
               <thead>
                 <tr id="resultsTableHeadRow">
