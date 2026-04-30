@@ -1,5 +1,3 @@
-"""Разбор публичной ссылки Google Sheets в URL экспорта CSV."""
-
 import re
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -8,7 +6,6 @@ class SpreadsheetUrlError(ValueError):
     pass
 
 
-# /spreadsheets/d/SPREADSHEET_ID/...
 _SHEET_ID_RE = re.compile(
     r"/spreadsheets/d/([a-zA-Z0-9_-]+)",
     re.IGNORECASE,
@@ -29,11 +26,6 @@ def _extract_gid_from_fragment_or_query(parsed) -> int | None:
 
 
 def parse_google_sheets_url(url: str) -> str:
-    """
-    Возвращает https URL для скачивания CSV (export?format=csv&gid=...).
-    Подойдёт для таблиц с публичным «Любой, у кого есть ссылка (просмотр)»
-    и опубликованных в веб-версиях, где /export?format=csv отдаётся без OAuth.
-    """
     u = (url or "").strip()
     if not u:
         raise SpreadsheetUrlError("URL пустой")

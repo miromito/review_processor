@@ -174,7 +174,6 @@ def chart_slice_active(
     chart_topic: str | None,
     filter_substrings: dict[str, str] | None,
 ) -> bool:
-    """Фильтры среза без ключевого слова с графика."""
     fc = filter_substrings or {}
     if fc:
         return True
@@ -214,7 +213,6 @@ def _row_keyword_cells(res: dict[str, Any]) -> list[str]:
 
 
 def row_matches_chart_keyword(res: dict[str, Any], chart_keyword_cf: str) -> bool:
-    """Точное совпадение одной из меток ключевых слов (без учёта регистра)."""
     for s in _row_keyword_cells(res):
         if s.casefold() == chart_keyword_cf:
             return True
@@ -226,7 +224,6 @@ def keyword_cloud_counts(
     *,
     top_n: int = 14,
 ) -> list[dict[str, Any]]:
-    """По одному счёту на слово на отзыв; канонический ключ — casefold, подпись — первый встреченный вариант."""
     counts: dict[str, int] = defaultdict(int)
     label_by_cf: dict[str, str] = {}
     for _idx, _row, res in pairs:
@@ -393,7 +390,6 @@ def scatter_bubbles_from_pairs(
     date_column: str,
     group_by: str = "day",
 ) -> tuple[list[dict[str, Any]], dict[str, str], bool]:
-    """Одна точка = (период × тональность), размер = count (на фронте в радиус пузырька)."""
     unit = (group_by or "day").strip().lower()
     if unit not in ("day", "week", "month", "quarter", "year"):
         unit = "day"

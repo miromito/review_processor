@@ -1,5 +1,3 @@
-"""Загрузка CSV из Google export URL и дозапись новых строк по content_hash."""
-
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -73,9 +71,6 @@ async def ingest_from_spreadsheet_url(
     public_url: str,
     settings: Settings,
 ) -> dict[str, Any]:
-    """
-    Первичная заливка: заменяет project_rows, выставляет поля Google Sheets.
-    """
     export_url = parse_google_sheets_url(public_url)
     raw = await fetch_sheet_csv_bytes(export_url, settings)
     columns, rows = files.parse_csv_bytes(raw)
@@ -147,10 +142,6 @@ async def append_new_rows_from_spreadsheet(
     project_id: str,
     settings: Settings,
 ) -> tuple[int, list[int], list[dict[str, Any]]]:
-    """
-    Скачать CSV, сравнить content_hash, вставить только **новые** строки.
-    Возвращает (число новых, список row_index новых, сырые dict новых данных в том же порядке).
-    """
     export_url = (project.get("spreadsheet_export_url") or "").strip()
     if not export_url:
         raise SheetSyncError("Не сохранён URL экспорта таблицы")
@@ -230,7 +221,6 @@ async def recompute_k_after_sync(
     project_id: str,
     settings: Settings,
 ) -> None:
-    """Пересчитать k/m по токенам после добавления строк (и выровнять m_rows)."""
     from bson import ObjectId
     from bson.errors import InvalidId
 

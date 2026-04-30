@@ -14,9 +14,7 @@ ProjectPhase = Literal[
 
 
 class SpreadsheetImportRequest(BaseModel):
-    """Публичная ссылка на Google Таблицу; CSV должен скачиваться без логина."""
-
-    url: str = Field(..., min_length=8, max_length=2000, description="Ссылка вида https://docs.google.com/spreadsheets/...")
+    url: str = Field(..., min_length=8, max_length=2000)
 
 
 class ProjectCreate(BaseModel):
@@ -64,9 +62,8 @@ class ProjectDetail(BaseModel):
     updated_at: datetime | None = None
     business_insight: str | None = None
     business_insight_at: datetime | None = None
-    topic_count: int = Field(10, ge=3, le=20, description="Целевое число уникальных тем по датасету")
+    topic_count: int = Field(10, ge=3, le=20)
     notification_email: str | None = None
-    # Источник: файл или Google-таблица (только при spreadsheet — опрос и алерты)
     data_source: Literal["file", "spreadsheet"] = "file"
     spreadsheet_url: str | None = None
     last_sheet_sync_at: datetime | None = None
@@ -96,22 +93,14 @@ class ManualSheetSyncResponse(BaseModel):
 
 
 class MappingUpdate(BaseModel):
-    text_column: str = Field(..., description="Колонка с текстом отзыва")
+    text_column: str = Field(...)
     date_column: str | None = None
     filter_columns: list[str] = Field(default_factory=list)
-    topic_count: int = Field(10, ge=3, le=20, description="Сколько уникальных тем допускается по всему датасету")
+    topic_count: int = Field(10, ge=3, le=20)
     notification_email: EmailStr | None = None
-    sync_interval_minutes: int | None = Field(
-        default=None,
-        description="Период проверки Google Таблицы, мин. (5–10080), только data_source=spreadsheet",
-    )
+    sync_interval_minutes: int | None = Field(default=None)
     alert_on_negative_in_new_rows: bool = False
-    alert_negative_share_pct: int | None = Field(
-        default=None,
-        ge=0,
-        le=100,
-        description="Порог доли негативов среди **новых** обработанных отзывов, при достижении — письмо",
-    )
+    alert_negative_share_pct: int | None = Field(default=None, ge=0, le=100)
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("notification_email", mode="before")
@@ -199,14 +188,8 @@ class DashboardResponse(BaseModel):
     has_date_axis: bool = False
     topic_sentiment: list[TopicSentimentSlice] = Field(default_factory=list)
     pain_points: list[PainPointItem] = Field(default_factory=list)
-    keyword_cloud: list[KeywordCloudItem] = Field(
-        default_factory=list,
-        description="До 14 наиболее частых ключевых слов по текущим фильтрам (облако; без учёта выбранного слова как фильтра)",
-    )
-    active_chart_keyword: str | None = Field(
-        default=None,
-        description="Выбранное на графике ключевых слов — применяется ко всем графикам; пусто — фильтр не активен",
-    )
+    keyword_cloud: list[KeywordCloudItem] = Field(default_factory=list)
+    active_chart_keyword: str | None = Field(default=None)
 
 
 class ResultsPage(BaseModel):
@@ -218,16 +201,10 @@ class ResultsPage(BaseModel):
 
 class ResultsFacetsResponse(BaseModel):
     sentiments: list[str] = Field(default_factory=list)
-    topics: list[str] = Field(default_factory=list, description="Уникальные темы (по одной на отзыв)")
-    keywords: list[str] = Field(
-        default_factory=list,
-        description="Уникальные ключевые слова из разметки отзывов (для фильтра таблицы)",
-    )
+    topics: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     filter_columns: list[str] = Field(default_factory=list)
-    filter_choices: dict[str, list[str]] = Field(
-        default_factory=dict,
-        description="Уникальные значения по каждой колонке-фильтру (для выпадающих списков)",
-    )
+    filter_choices: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ScatterPoint(BaseModel):

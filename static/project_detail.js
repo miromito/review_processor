@@ -1531,6 +1531,18 @@
     let touchStartX = 0;
     let touchStartY = 0;
     let touchActive = false;
+    const swipeMaxPx = 56;
+    const swipeDamp = 0.42;
+
+    function snapSwipeCardBack() {
+      if (!art.style.transform) return;
+      art.style.transition = "transform 0.18s ease-out";
+      art.style.transform = "translateX(0)";
+      globalThis.setTimeout(() => {
+        art.style.removeProperty("transition");
+        art.style.removeProperty("transform");
+      }, 200);
+    }
 
     art.addEventListener(
       "touchstart",
@@ -1543,12 +1555,38 @@
         touchStartX = p.clientX;
         touchStartY = p.clientY;
         touchActive = true;
+        art.style.removeProperty("transition");
+        art.style.removeProperty("transform");
+      },
+      { passive: true },
+    );
+
+    art.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!touchActive) return;
+        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) return;
+        const t = e.touches[0];
+        if (!t) return;
+        const dx = t.clientX - touchStartX;
+        const dy = t.clientY - touchStartY;
+        if (Math.abs(dy) > Math.abs(dx) + 18) {
+          art.style.removeProperty("transition");
+          art.style.removeProperty("transform");
+          return;
+        }
+        if (Math.abs(dx) < 6) return;
+        if (Math.abs(dx) < Math.abs(dy) * 0.95) return;
+        const tx = Math.max(-swipeMaxPx, Math.min(swipeMaxPx, dx * swipeDamp));
+        art.style.transition = "none";
+        art.style.transform = `translateX(${tx}px)`;
       },
       { passive: true },
     );
 
     art.addEventListener("touchcancel", () => {
       touchActive = false;
+      snapSwipeCardBack();
     });
 
     art.addEventListener(
@@ -1556,10 +1594,14 @@
       (e) => {
         if (!touchActive) return;
         touchActive = false;
-        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) return;
+        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) {
+          snapSwipeCardBack();
+          return;
+        }
         const p = e.changedTouches[0];
         const dx = p.clientX - touchStartX;
         const dy = p.clientY - touchStartY;
+        snapSwipeCardBack();
         const minDx = 44;
         if (Math.abs(dx) < minDx || Math.abs(dx) < Math.abs(dy) * 1.2) return;
         toggleMobileCardReviewText(art);
@@ -2051,6 +2093,11 @@
 
   document.getElementById("btnChartFiltersApply")?.addEventListener("click", () => {
     loadDashboard();
+    const chartFiltersEl = document.getElementById("chartFiltersOffcanvas");
+    const Offcanvas = globalThis.bootstrap?.Offcanvas;
+    if (chartFiltersEl && Offcanvas) {
+      Offcanvas.getOrCreateInstance(chartFiltersEl).hide();
+    }
   });
   document.getElementById("btnChartFiltersReset")?.addEventListener("click", () => {
     const df = document.getElementById("chartDateFrom");

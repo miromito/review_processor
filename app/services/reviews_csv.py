@@ -1,5 +1,3 @@
-"""Плоский CSV экспорт отзывов (одна строка — одна запись с метаданными разметки)."""
-
 import csv
 import io
 from typing import Any
@@ -8,7 +6,6 @@ from app.schemas.api import RowResult
 
 
 def build_reviews_csv_bytes(rows: list[RowResult], filter_columns: list[str]) -> bytes:
-    """UTF-8 с BOM для Excel; поля с переносами строк экранируются по правилам CSV."""
     max_topics = max((len(r.topics or []) for r in rows), default=0)
     max_topics = min(max(max_topics, 1), 40)
     filter_labels = list(filter_columns)

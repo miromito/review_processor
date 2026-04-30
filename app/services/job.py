@@ -242,7 +242,6 @@ async def run_incremental_analysis_job(
     project_id: str,
     new_row_indices: list[int],
 ) -> None:
-    """LLM-разметка новых хвостовых строк; словарь тем — из project.topic_vocabulary."""
     settings = get_settings()
     p_oid = ObjectId(project_id)
     j_oid = ObjectId(job_id)
@@ -336,7 +335,7 @@ async def run_incremental_analysis_job(
                 prior_topic_labels=prior,
             )
             if out_vocab:
-                prior = list(out_vocab)  # фиксированный словарь; модель отдаёт тот же набор
+                prior = list(out_vocab)
             by_idxr = {int(x["index"]): x for x in batch_results if "index" in x}
             for offset, _row in enumerate(chunk):
                 abs_idx = start + offset

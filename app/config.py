@@ -12,22 +12,18 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-nano"
     token_limit_t: int = 100_000
-    # JSON [{index,text},...] в одном запросе к модели (без учёта system и ответа)
     analysis_batch_token_budget: int = Field(default=50_000, ge=1)
     max_upload_mb: int = 15
     max_import_rows: int = 10_000
-    # Google Sheets: загрузка CSV по export URL
     sheet_fetch_timeout_s: int = 45
     sheet_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
 
-    # JWT: если AUTH_USERNAME непустой — все страницы и /api кроме логина требуют cookie access_token
     auth_username: str = ""
     auth_password: str = ""
     jwt_secret: str = ""
     jwt_expire_minutes: int = Field(default=60 * 24 * 7, ge=1)
     cookie_secure: bool = False
 
-    # Почта (пустой SMTP — письма не отправляются, проект и анализ работают как раньше)
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -35,9 +31,7 @@ class Settings(BaseSettings):
     smtp_use_ssl: bool = False
     smtp_use_starttls: bool = True
     mail_from: str = ""
-    # Ссылка на проект в письмах (без хвоста)
     app_base_url: str = "http://127.0.0.1:8000"
-    # Версия для подвала UI (например короткий SHA: задаётся при `docker compose build` или в .env)
     app_version: str = ""
 
     @model_validator(mode="after")

@@ -18,11 +18,6 @@ def prefix_rows_by_token_limit(
     token_limit: int,
     model: str,
 ) -> tuple[int, int, int]:
-    """
-    Возвращает (K, M, sum_tokens_for_prefix):
-    K — число первых строк, укладывающихся в лимит по сумме токенов text_column;
-    M — всего строк.
-    """
     m = len(rows)
     total = 0
     k = 0
@@ -47,7 +42,6 @@ def count_batch_payload_tokens(
     start_index: int,
     model: str,
 ) -> int:
-    """Токены тела запроса, как в `analyze_rows_batch`: JSON-массив {index, text}."""
     payload: list[dict[str, Any]] = []
     for offset, row in enumerate(rows_slice):
         text = row.get(text_column, "")
@@ -67,11 +61,6 @@ def chunk_rows_by_analysis_token_budget(
     *,
     base_index: int = 0,
 ) -> list[tuple[int, list[dict[str, Any]]]]:
-    """
-    Делит строки на батчи так, чтобы JSON полезной нагрузки не превышал max_payload_tokens.
-    Возвращает пары (абсолютный индекс первой строки, срез строк).
-    base_index — смещение, если rows — фрагмент (например, только хвост таблицы).
-    """
     budget = max(1, int(max_payload_tokens))
     base = int(base_index)
     n = len(rows)

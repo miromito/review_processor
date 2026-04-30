@@ -1,5 +1,3 @@
-"""JWT cookie-auth: включается, если в окружении задан AUTH_USERNAME."""
-
 import secrets
 from datetime import UTC, datetime, timedelta
 

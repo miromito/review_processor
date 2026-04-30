@@ -68,7 +68,6 @@ _STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 
 
 def _project_detail_js_mtime() -> str:
-    """Версия для query string — сбрасывает кэш браузера после правок JS."""
     try:
         return str(int((_STATIC_ROOT / "project_detail.js").stat().st_mtime))
     except OSError:

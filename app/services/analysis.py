@@ -16,7 +16,6 @@ def _n_topics(topic_count: int) -> int:
 
 
 def _normalize_row_keywords(raw: Any) -> list[str]:
-    """Короткие фразы 1–2 слова; до _KEYWORDS_PER_ROW штук."""
     if not isinstance(raw, list):
         return []
     out: list[str] = []
@@ -88,7 +87,6 @@ def _openai_response_format_json_schema(
     has_prior: bool,
     prior_len: int,
 ) -> dict[str, Any]:
-    """json_schema (strict) — индексы в словарь, без свободных строк тем."""
     n = _n_topics(n)
     if has_prior:
         mxi = max(0, int(prior_len) - 1)
@@ -251,7 +249,6 @@ async def analyze_rows_batch(
     topic_count: int = 10,
     prior_topic_labels: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """LLM-разметка. Возвращает (строки результатов, актуальный словарь для следующих батчей)."""
     if not settings.openai_api_key:
         raise RuntimeError("Анализ не выполнен. Обратитесь к администратору.")
 

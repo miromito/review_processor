@@ -1,5 +1,3 @@
-"""Загрузка и фильтрация строк результата анализа для таблицы и фасетов."""
-
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase

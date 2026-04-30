@@ -16,7 +16,6 @@ def send_notification_email(
     subject: str,
     body_text: str,
 ) -> bool:
-    """Синхронная отправка plain-text письма. False — письмо не отправлено (нет настроек или ошибка)."""
     to_addr = (to_addr or "").strip()
     if not to_addr:
         return False

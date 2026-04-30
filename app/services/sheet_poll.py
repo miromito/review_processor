@@ -1,5 +1,3 @@
-"""Периодическая подтягивка Google Таблицы и инкрементальный анализ по новым строкам."""
-
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any

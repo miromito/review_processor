@@ -306,7 +306,6 @@ async def sync_spreadsheet_now(
     db: Db,
     settings: SettingsDep,
 ) -> ManualSheetSyncResponse:
-    """Ручная проверка Google Таблицы (только data_source=spreadsheet, phase=complete)."""
     oid = _oid(project_id)
     project = await projects_coll(db).find_one({"_id": oid})
     if not project:
@@ -631,7 +630,6 @@ async def rename_project(project_id: str, body: ProjectRenameBody, db: Db) -> Pr
 
 @router.get("/{project_id}/export.csv")
 async def export_reviews_csv(project_id: str, db: Db) -> Response:
-    """Плоский CSV: одна строка — один отзыв, колонки разметки и фильтров из файла."""
     oid = _oid(project_id)
     project = await projects_coll(db).find_one({"_id": oid})
     if not project:
