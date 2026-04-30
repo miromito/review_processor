@@ -1074,6 +1074,22 @@
     await loadScatter();
   }
 
+  function initReviewsByDateModalSwipe(bodyEl) {
+    const mq = globalThis.matchMedia("(max-width: 767.98px)");
+    if (!mq.matches) return;
+    const Collapse = globalThis.bootstrap?.Collapse;
+    if (!Collapse) return;
+    for (const item of bodyEl.querySelectorAll(".ra-reviews-by-date__item")) {
+      const collapseEl = item.querySelector(".accordion-collapse");
+      if (!collapseEl) continue;
+      bindMobileSwipeTranslateCommit(item, {
+        onSwipeCommitted: () => {
+          Collapse.getOrCreateInstance(collapseEl).toggle();
+        },
+      });
+    }
+  }
+
   async function openReviewsModal(dayIso, dayToIso) {
     const modalEl = document.getElementById("reviewsByDateModal");
     const titleEl = document.getElementById("reviewsByDateTitle");
@@ -1117,12 +1133,12 @@
         const kwsModal = (r.keywords || []).filter(Boolean).join(", ");
         html += `<div class="${itemClass}">
           <h2 class="accordion-header h6 mb-0" id="${h}">
-            <button class="accordion-button${i ? " collapsed" : ""}" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#${c}" aria-expanded="${i ? "false" : "true"}" aria-controls="${c}">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#${c}" aria-expanded="false" aria-controls="${c}">
               Строка ${r.row_index} · ${esc(sentimentLabelForUi(r.sentiment))} · ${esc(r.primary_topic || "—")}
             </button>
           </h2>
-          <div id="${c}" class="accordion-collapse collapse${i ? "" : " show"}" aria-labelledby="${h}" data-bs-parent="#${accId}">
+          <div id="${c}" class="accordion-collapse collapse" aria-labelledby="${h}" data-bs-parent="#${accId}">
             <div class="accordion-body">
               <p class="small text-muted mb-1">Темы: ${esc(topics || "—")}</p>
               <p class="small text-muted mb-1">Ключевые слова: ${esc(kwsModal || "—")}</p>
@@ -1134,6 +1150,7 @@
       });
       html += "</div>";
       bodyEl.innerHTML = html;
+      initReviewsByDateModalSwipe(bodyEl);
     } catch (e) {
       bodyEl.innerHTML = `<p class="text-danger">${esc(e.message)}</p>`;
     }
@@ -1468,6 +1485,116 @@
     syncExpandAllReviewsLabel();
   }
 
+  /**
+   * Свайп влево/вправо: сдвиг `el`, по порогу — `onSwipeCommitted`; подавление клика после жеста.
+   * @param {HTMLElement} el
+   * @param {{ excludeSelector?: string; onSwipeCommitted: () => void; suppressFollowingClickMs?: number }} options
+   */
+  function bindMobileSwipeTranslateCommit(el, options) {
+    const excludeSelector = options.excludeSelector || "";
+    const onSwipeCommitted = options.onSwipeCommitted;
+    const suppressFollowingClickMs = options.suppressFollowingClickMs ?? 450;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchActive = false;
+    const swipeMaxPx = 56;
+    const swipeDamp = 0.42;
+
+    function excluded(e) {
+      return Boolean(excludeSelector && e.target.closest(excludeSelector));
+    }
+
+    function snapSwipeBack() {
+      if (!el.style.transform) return;
+      el.style.transition = "transform 0.18s ease-out";
+      el.style.transform = "translateX(0)";
+      globalThis.setTimeout(() => {
+        el.style.removeProperty("transition");
+        el.style.removeProperty("transform");
+      }, 200);
+    }
+
+    el.addEventListener(
+      "touchstart",
+      (e) => {
+        if (excluded(e)) {
+          touchActive = false;
+          return;
+        }
+        const p = e.changedTouches[0];
+        touchStartX = p.clientX;
+        touchStartY = p.clientY;
+        touchActive = true;
+        el.style.removeProperty("transition");
+        el.style.removeProperty("transform");
+      },
+      { passive: true },
+    );
+
+    el.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!touchActive) return;
+        if (excluded(e)) return;
+        const t = e.touches[0];
+        if (!t) return;
+        const dx = t.clientX - touchStartX;
+        const dy = t.clientY - touchStartY;
+        if (Math.abs(dy) > Math.abs(dx) + 18) {
+          el.style.removeProperty("transition");
+          el.style.removeProperty("transform");
+          return;
+        }
+        if (Math.abs(dx) < 6) return;
+        if (Math.abs(dx) < Math.abs(dy) * 0.95) return;
+        const tx = Math.max(-swipeMaxPx, Math.min(swipeMaxPx, dx * swipeDamp));
+        el.style.transition = "none";
+        el.style.transform = `translateX(${tx}px)`;
+      },
+      { passive: true },
+    );
+
+    el.addEventListener("touchcancel", () => {
+      touchActive = false;
+      snapSwipeBack();
+    });
+
+    el.addEventListener(
+      "touchend",
+      (e) => {
+        if (!touchActive) return;
+        touchActive = false;
+        if (excluded(e)) {
+          snapSwipeBack();
+          return;
+        }
+        const p = e.changedTouches[0];
+        const dx = p.clientX - touchStartX;
+        const dy = p.clientY - touchStartY;
+        snapSwipeBack();
+        const minDx = 44;
+        if (Math.abs(dx) < minDx || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+        onSwipeCommitted();
+        el.dataset.raSwipeSuppress = "1";
+        globalThis.setTimeout(() => {
+          delete el.dataset.raSwipeSuppress;
+        }, suppressFollowingClickMs);
+      },
+      { passive: true },
+    );
+
+    el.addEventListener(
+      "click",
+      (e) => {
+        if (el.dataset.raSwipeSuppress === "1") {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true,
+    );
+  }
+
   function mobileReviewCardToneClass(raw) {
     const k = normalizeSentiment(String(raw));
     if (k === "positive") return "ra-review-mobile-card--positive";
@@ -1528,97 +1655,14 @@
       }
     };
 
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchActive = false;
-    const swipeMaxPx = 56;
-    const swipeDamp = 0.42;
-
-    function snapSwipeCardBack() {
-      if (!art.style.transform) return;
-      art.style.transition = "transform 0.18s ease-out";
-      art.style.transform = "translateX(0)";
-      globalThis.setTimeout(() => {
-        art.style.removeProperty("transition");
-        art.style.removeProperty("transform");
-      }, 200);
-    }
-
-    art.addEventListener(
-      "touchstart",
-      (e) => {
-        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) {
-          touchActive = false;
-          return;
-        }
-        const p = e.changedTouches[0];
-        touchStartX = p.clientX;
-        touchStartY = p.clientY;
-        touchActive = true;
-        art.style.removeProperty("transition");
-        art.style.removeProperty("transform");
+    bindMobileSwipeTranslateCommit(art, {
+      excludeSelector: ".ra-review-mobile-card__meta,.ra-row-expand-btn",
+      onSwipeCommitted: () => {
+        toggleMobileCardReviewText(art);
       },
-      { passive: true },
-    );
-
-    art.addEventListener(
-      "touchmove",
-      (e) => {
-        if (!touchActive) return;
-        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) return;
-        const t = e.touches[0];
-        if (!t) return;
-        const dx = t.clientX - touchStartX;
-        const dy = t.clientY - touchStartY;
-        if (Math.abs(dy) > Math.abs(dx) + 18) {
-          art.style.removeProperty("transition");
-          art.style.removeProperty("transform");
-          return;
-        }
-        if (Math.abs(dx) < 6) return;
-        if (Math.abs(dx) < Math.abs(dy) * 0.95) return;
-        const tx = Math.max(-swipeMaxPx, Math.min(swipeMaxPx, dx * swipeDamp));
-        art.style.transition = "none";
-        art.style.transform = `translateX(${tx}px)`;
-      },
-      { passive: true },
-    );
-
-    art.addEventListener("touchcancel", () => {
-      touchActive = false;
-      snapSwipeCardBack();
     });
 
-    art.addEventListener(
-      "touchend",
-      (e) => {
-        if (!touchActive) return;
-        touchActive = false;
-        if (e.target.closest(".ra-review-mobile-card__meta") || e.target.closest(".ra-row-expand-btn")) {
-          snapSwipeCardBack();
-          return;
-        }
-        const p = e.changedTouches[0];
-        const dx = p.clientX - touchStartX;
-        const dy = p.clientY - touchStartY;
-        snapSwipeCardBack();
-        const minDx = 44;
-        if (Math.abs(dx) < minDx || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-        toggleMobileCardReviewText(art);
-        art.dataset.raSwipeTextToggle = "1";
-        globalThis.setTimeout(() => {
-          delete art.dataset.raSwipeTextToggle;
-        }, 450);
-      },
-      { passive: true },
-    );
-
     art.addEventListener("click", (e) => {
-      if (art.dataset.raSwipeTextToggle === "1") {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
       if (e.target.closest(".ra-row-expand-btn")) return;
       if (e.target.closest(".ra-review-mobile-card__meta")) return;
       toggleMeta();

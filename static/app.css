@@ -708,7 +708,7 @@ button.ra-review-expand-link:focus-visible {
 /* Модалка «Отзывы за дату» / по клику на график: цвет карточки = тональность */
 #reviewsByDateModal .ra-reviews-by-date__item {
   border-left: 4px solid transparent;
-  overflow: hidden;
+  overflow: visible;
 }
 
 #reviewsByDateModal .ra-reviews-by-date__item--positive {
