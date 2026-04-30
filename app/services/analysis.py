@@ -7,10 +7,34 @@ from langchain_openai import ChatOpenAI
 from app.config import Settings
 
 _VOCAB_STRING_MAX = 100
+_KEYWORD_STRING_MAX = 40
+_KEYWORDS_PER_ROW = 4
 
 
 def _n_topics(topic_count: int) -> int:
     return max(3, min(20, int(topic_count)))
+
+
+def _normalize_row_keywords(raw: Any) -> list[str]:
+    """Короткие фразы 1–2 слова; до _KEYWORDS_PER_ROW штук."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = " ".join(x.split()).strip()[:_KEYWORD_STRING_MAX]
+        if not s:
+            continue
+        k = s.casefold()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(s)
+        if len(out) >= _KEYWORDS_PER_ROW:
+            break
+    return out
 
 
 def _dedupe_preserve_order(labels: list[str], *, cap: int | None = None) -> list[str]:
@@ -41,8 +65,18 @@ def _build_result_item_schema(*, max_topic_index: int) -> dict[str, Any]:
                 "maximum": max_topic_index,
             },
             "rationale": {"type": "string"},
+            "keywords": {
+                "type": "array",
+                "minItems": _KEYWORDS_PER_ROW,
+                "maxItems": _KEYWORDS_PER_ROW,
+                "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": _KEYWORD_STRING_MAX,
+                },
+            },
         },
-        "required": ["index", "sentiment", "topic_index", "rationale"],
+        "required": ["index", "sentiment", "topic_index", "rationale", "keywords"],
         "additionalProperties": False,
     }
 
@@ -123,7 +157,8 @@ def _build_system_and_human(
             f"""Ты аналитик русскоязычных отзывов. Ответ строго по JSON Schema.
 Сначала **vocabulary** — 1..{n} **коротких** подписей (один вариант на смысл, без смысловых дублей).
 Для **каждого** "reviews" в "results": index, sentiment, **один** `topic_index` (целое 0..len(vocabulary)-1, какая **одна** тема лучше подходит), rationale кратко по-русски.
-Темы **только** целыми индексами, не текстом. В `vocabulary` **не больше {n}** строк.""",
+Темы **только** целыми индексами, не текстом. В `vocabulary` **не больше {n}** строк.
+Плюс ровно **{_KEYWORDS_PER_ROW}** строки в `keywords`: **ключевые слова или двухсловные фразы** (каждая — **1–2 слова** по-русски), по смыслу отзыва; без дублей; не повторять дословно название темы из vocabulary, если можно выделить более конкретные сигналы (сервис, цена, срок и т.п.).""",
             json.dumps({"reviews": payload}, ensure_ascii=False),
         )
     lines = [f"{i} — {prior[i]}" for i in range(len(prior))]
@@ -133,7 +168,8 @@ def _build_system_and_human(
 Индексы 0..{len(prior) - 1}:
 {legend}
 По каждому "reviews": index, sentiment, **topic_index** (0..{len(prior) - 1} — **один**), rationale.
-**Только индекс** в `topic_index`, не текст. Если смысла в списке нет — выбери **одну** **наиболее** близкую существующую."""
+**Только индекс** в `topic_index`, не текст. Если смысла в списке нет — выбери **одну** **наиболее** близкую существующую.
+Ровно **{_KEYWORDS_PER_ROW}** строки в `keywords`: **1–2 слова** каждая, ключевые сигналы по отзыву, по-русски, без дублей."""
         + '\nОтвет по схеме: только { "results": [ ... ] } — без поля vocabulary.',
         json.dumps({"reviews": payload}, ensure_ascii=False),
     )
@@ -190,11 +226,13 @@ def _parse_batch_response(
                 compact = [label]
         if not compact and vocab:
             compact = [vocab[0]]
+        kw_list = _normalize_row_keywords(item.get("keywords"))
         normalized.append(
             {
                 "index": int(item.get("index", 0)),
                 "sentiment": str(item.get("sentiment", "neutral")),
                 "topics": compact,
+                "keywords": kw_list,
                 "rationale": str(item.get("rationale", ""))[:500],
             }
         )

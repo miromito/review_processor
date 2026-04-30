@@ -29,6 +29,8 @@
   let tableFilterColumns = [];
 
   let charts = { sentiment: null, topicStack: null, pain: null, timeline: null, scatter: null };
+  /** Точное ключевое слово с графика; дублируется в query `chart_keyword` для всех графиков. */
+  let chartKeywordFilter = "";
   /** Агрегаты по (дата, тональность) для пузырькового графика */
   let scatterBubbles = [];
 
@@ -397,7 +399,21 @@
     }
   }
 
+  function clearKeywordWordCloud() {
+    const WC = globalThis.WordCloud;
+    if (typeof WC !== "undefined" && WC.stop) {
+      WC.stop();
+    }
+    const c = document.getElementById("chartKeywords");
+    if (c) {
+      const ctx = c.getContext("2d");
+      if (ctx) ctx.clearRect(0, 0, c.width, c.height);
+      c.style.cursor = "";
+    }
+  }
+
   function destroyCharts() {
+    clearKeywordWordCloud();
     Object.values(charts).forEach((c) => {
       if (c) c.destroy();
     });
@@ -431,7 +447,29 @@
       const v = inp.value?.trim();
       if (col && v) p.set(col, v);
     }
+    const kw = chartKeywordFilter.trim();
+    if (kw) p.set("chart_keyword", kw);
     return p.toString();
+  }
+
+  function syncChartKeywordChip() {
+    const wrap = document.getElementById("chartKeywordChipWrap");
+    const lab = document.getElementById("chartKeywordChipLabel");
+    if (!wrap || !lab) return;
+    const v = chartKeywordFilter.trim();
+    if (!v) {
+      wrap.classList.add("d-none");
+      lab.textContent = "";
+      return;
+    }
+    wrap.classList.remove("d-none");
+    lab.textContent = v;
+  }
+
+  function setChartKeywordFilter(next) {
+    chartKeywordFilter = String(next || "").trim();
+    syncChartKeywordChip();
+    loadDashboard();
   }
 
   function chartFiltersQuerySuffix() {
@@ -698,6 +736,10 @@
       console.warn(d);
       return;
     }
+    if (Object.prototype.hasOwnProperty.call(d, "active_chart_keyword")) {
+      chartKeywordFilter = d.active_chart_keyword ? String(d.active_chart_keyword) : "";
+    }
+    syncChartKeywordChip();
 
     const sc = d.sentiment_counts || {};
     const sk = SENTIMENT_DOUGHNUT_ORDER.filter((k) => Number(sc[k] || 0) > 0);
@@ -721,6 +763,90 @@
         },
       },
     });
+
+    const kwEmpty = document.getElementById("keywordChartEmpty");
+    const kwCanvas = document.getElementById("chartKeywords");
+    if (kwEmpty) kwEmpty.classList.add("d-none");
+    if (kwCanvas) kwCanvas.classList.add("d-none");
+    const kwHits = d.keyword_cloud || [];
+    const selKwCf = chartKeywordFilter.trim().toLowerCase();
+    const WC = globalThis.WordCloud;
+    if (!kwHits.length) {
+      if (kwEmpty) kwEmpty.classList.remove("d-none");
+    } else if (kwCanvas && typeof WC === "function" && WC.isSupported) {
+      kwCanvas.classList.remove("d-none");
+      const drawKwCloud = () => {
+        if (typeof WC.stop === "function") WC.stop();
+        const stage = kwCanvas.parentElement;
+        const rect = stage?.getBoundingClientRect?.() || { width: 320, height: 260 };
+        const w = Math.max(200, Math.floor(rect.width));
+        const h = Math.max(200, Math.floor(rect.height));
+        kwCanvas.width = w;
+        kwCanvas.height = h;
+        const list = kwHits
+          .map((x) => [String(x.keyword || "").trim(), Math.max(1, Number(x.count) || 1)])
+          .filter((pair) => pair[0]);
+        if (!list.length) return;
+        const weights = list.map((x) => x[1]);
+        const maxC = Math.max(...weights, 1);
+        const minC = Math.min(...weights);
+        const span = maxC > minC ? maxC - minC : 1;
+        const palette = ["#4c1d95", "#86198f", "#7c3aed", "#a78bfa", "#84cc16", "#eab308", "#ea580c", "#0f766e"];
+        WC(kwCanvas, {
+          list,
+          gridSize: Math.max(3, Math.round(10 - list.length * 0.35)),
+          weightFactor: (size) => 11 + ((Number(size) - minC) / span) * (Math.min(w, h) / 5.2),
+          minSize: 10,
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          fontWeight: "600",
+          color(word) {
+            const s = String(word || "").trim().toLowerCase();
+            if (s && s === selKwCf) return "#0d6efd";
+            let hash = 0;
+            for (let i = 0; i < s.length; i++) hash += s.charCodeAt(i) * (i + 3);
+            return palette[Math.abs(hash) % palette.length];
+          },
+          rotateRatio: 0,
+          minRotation: 0,
+          maxRotation: 0,
+          rotationSteps: 0,
+          shuffle: false,
+          shape: "square",
+          ellipticity: 0.72,
+          shrinkToFit: true,
+          drawOutOfBound: false,
+          backgroundColor: "transparent",
+          clearCanvas: true,
+          click(item) {
+            const word = item?.[0];
+            if (word == null || String(word).trim() === "") return;
+            const cf = String(word).trim().toLowerCase();
+            const cur = chartKeywordFilter.trim().toLowerCase();
+            if (cur && cf === cur) setChartKeywordFilter("");
+            else setChartKeywordFilter(String(word));
+          },
+          hover(item, _dim, event) {
+            kwCanvas.style.cursor = item && event?.type === "mousemove" ? "pointer" : "default";
+          },
+        });
+      };
+      globalThis.requestAnimationFrame(drawKwCloud);
+      kwCanvas.setAttribute("role", "img");
+      kwCanvas.setAttribute(
+        "aria-label",
+        "Облако ключевых слов: до 14 слов, размер по частоте; щелчок задаёт фильтр по слову",
+      );
+    } else if (kwHits.length && kwCanvas) {
+      kwCanvas.classList.remove("d-none");
+      kwCanvas.width = 300;
+      kwCanvas.height = 120;
+      const ctx = kwCanvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#6c757d";
+        ctx.font = "12px system-ui";
+        ctx.fillText("Облако слов недоступно в этом браузере.", 8, 24);
+      }
+    }
 
     const sl = d.topic_sentiment || [];
     const ctxStack = document.getElementById("chartTopicStack");
@@ -951,6 +1077,7 @@
         const c = `c${accId}${i}`;
         const topics = (r.topics || []).join(", ");
         const itemClass = `accordion-item ra-reviews-by-date__item ${sentimentModalItemClass(r.sentiment)}`;
+        const kwsModal = (r.keywords || []).filter(Boolean).join(", ");
         html += `<div class="${itemClass}">
           <h2 class="accordion-header h6 mb-0" id="${h}">
             <button class="accordion-button${i ? " collapsed" : ""}" type="button" data-bs-toggle="collapse"
@@ -961,6 +1088,7 @@
           <div id="${c}" class="accordion-collapse collapse${i ? "" : " show"}" aria-labelledby="${h}" data-bs-parent="#${accId}">
             <div class="accordion-body">
               <p class="small text-muted mb-1">Темы: ${esc(topics || "—")}</p>
+              <p class="small text-muted mb-1">Ключевые слова: ${esc(kwsModal || "—")}</p>
               <p class="mb-2">${esc(r.text || "")}</p>
               <p class="small mb-0"><strong>Обоснование:</strong> ${esc(r.rationale || "—")}</p>
             </div>
@@ -1156,16 +1284,16 @@
   function rebuildTableHeaderForFilters(filterCols) {
     const tr = document.getElementById("resultsTableHeadRow");
     if (!tr) return;
-    // Фиксировано: тональность, тема, [фильтры], текст
-    while (tr.children.length > 3) {
-      tr.removeChild(tr.children[2]);
-    }
+    tr.innerHTML = "<th>Тональность</th><th>Тема</th><th>Ключевые слова</th>";
     for (const col of filterCols) {
       const th = document.createElement("th");
       th.textContent = col;
       th.title = col;
-      tr.insertBefore(th, tr.lastElementChild);
+      tr.append(th);
     }
+    const thText = document.createElement("th");
+    thText.textContent = "Текст";
+    tr.append(thText);
   }
 
   async function loadTableFacets() {
@@ -1179,6 +1307,7 @@
       (v) => SENTIMENT_RU[normalizeSentiment(String(v))] || String(v),
     );
     fillSelectOptions(document.getElementById("filterTopic"), f.topics || [], true);
+    fillSelectOptions(document.getElementById("filterKeyword"), f.keywords || [], true);
     tableFilterColumns = f.filter_columns || [];
     rebuildTableHeaderForFilters(tableFilterColumns);
     const wrap = document.getElementById("filterColumnsWrap");
@@ -1273,6 +1402,8 @@
     if (s) p.set("sentiment", s);
     const t = document.getElementById("filterTopic")?.value;
     if (t) p.set("topic", t);
+    const kw = document.getElementById("filterKeyword")?.value?.trim();
+    if (kw) p.set("keyword", kw);
     const q = document.getElementById("filterQ")?.value?.trim();
     if (q) p.set("q", q);
     const dq = document.getElementById("filterDateQ")?.value?.trim();
@@ -1459,9 +1590,10 @@
       const tr = document.createElement("tr");
       const t = r.topics || [];
       const t0 = t[0] != null ? esc(t[0]) : "—";
+      const kws = (r.keywords || []).filter(Boolean).map((x) => esc(String(x))).join(", ") || "—";
       const fd = r.filters || {};
       const filterCells = tableFilterColumns.map((c) => `<td>${esc(fd[c] != null ? String(fd[c]) : "—")}</td>`).join("");
-      tr.innerHTML = `<td>${sentimentPillHtml(r.sentiment)}</td><td>${t0}</td>${filterCells}`;
+      tr.innerHTML = `<td>${sentimentPillHtml(r.sentiment)}</td><td>${t0}</td><td class="small">${kws}</td>${filterCells}`;
       appendReviewTextCell(tr, r.text ?? "");
       tbody.append(tr);
     }
@@ -1658,6 +1790,8 @@
   document.getElementById("btnFilterReset")?.addEventListener("click", () => {
     document.getElementById("filterSentiment").value = "";
     document.getElementById("filterTopic").value = "";
+    const fk = document.getElementById("filterKeyword");
+    if (fk) fk.value = "";
     document.getElementById("filterQ").value = "";
     document.getElementById("filterDateQ").value = "";
     for (const inp of document.querySelectorAll(".filter-col-input")) inp.value = "";
@@ -1719,6 +1853,14 @@
     if (dt) dt.value = "";
     if (topic) topic.value = "";
     for (const inp of document.querySelectorAll(".chart-filter-col-input")) inp.value = "";
+    chartKeywordFilter = "";
+    syncChartKeywordChip();
+    loadDashboard();
+  });
+
+  document.getElementById("chartKeywordChipClear")?.addEventListener("click", () => {
+    chartKeywordFilter = "";
+    syncChartKeywordChip();
     loadDashboard();
   });
 
@@ -1737,6 +1879,16 @@
     }
     await loadResultsTable();
   });
+
+  const reviewsFiltersDetails = document.getElementById("reviewsFiltersDetails");
+  if (reviewsFiltersDetails instanceof HTMLDetailsElement) {
+    const mqWide = globalThis.matchMedia("(min-width: 768px)");
+    const syncReviewsFiltersDetailsOpen = () => {
+      reviewsFiltersDetails.open = mqWide.matches;
+    };
+    syncReviewsFiltersDetailsOpen();
+    mqWide.addEventListener("change", syncReviewsFiltersDetailsOpen);
+  }
 
   loadProject().catch((e) => {
     badgeEl.textContent = String(e.message || e);

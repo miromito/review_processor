@@ -129,10 +129,14 @@
       <button class="nav-link" id="tab-table" data-bs-toggle="tab" data-bs-target="#pane-table" type="button"
               role="tab" aria-controls="pane-table" aria-selected="false">Отзывы</button>
     </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-insight" data-bs-toggle="tab" data-bs-target="#pane-insight" type="button"
+              role="tab" aria-controls="pane-insight" aria-selected="false">Бизнес-инсайт</button>
+    </li>
   </ul>
   <div class="tab-content">
     <div class="tab-pane fade show active" id="pane-dash" role="tabpanel" aria-labelledby="tab-dash">
-      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
         <h2 class="h6 text-uppercase text-muted mb-0">Графики</h2>
         <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
                 data-bs-toggle="offcanvas" data-bs-target="#chartFiltersOffcanvas" aria-controls="chartFiltersOffcanvas"
@@ -140,6 +144,12 @@
           <span aria-hidden="true">☰</span>
           Фильтры
         </button>
+      </div>
+      <div id="chartKeywordChipWrap" class="ra-chart-keyword-chip alert alert-light border py-2 px-3 mb-3 d-none" role="status">
+        <span class="small text-muted mb-0">Фильтр по ключевому слову:</span>
+        <span class="fw-semibold text-body" id="chartKeywordChipLabel"></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="chartKeywordChipClear"
+                aria-label="Снять фильтр по ключевому слову">Снять</button>
       </div>
 
       <div class="row g-3 mb-4 align-items-stretch ra-chart-row ra-row-sentiment">
@@ -167,29 +177,29 @@
           </div>
         </div>
         <div class="col-lg-6 d-flex">
-          <div class="card w-100 d-flex flex-column" id="insightCard">
-            <div class="card-header">Краткий бизнес-инсайт</div>
+          <div class="card w-100 d-flex flex-column" id="keywordChartCard">
+            <div class="card-header">Ключевые слова</div>
             <div class="card-body d-flex flex-column flex-grow-1">
               <div class="ra-chart-prelude">
                 <details class="small border ra-hint rounded px-2 py-2 mb-0">
-                  <summary class="fw-semibold text-secondary user-select-none" aria-label="Подсказка по бизнес-инсайту">Подсказка</summary>
+                  <summary class="fw-semibold text-secondary user-select-none" aria-label="Подсказка по графику ключевых слов">Подсказка</summary>
                   <div class="text-muted mt-2 mb-0">
                     <p class="mb-2">
-                      Краткое заключение формируется автоматически после завершения анализа. Модель использует сводные показатели и фрагмент выборки (первые 50 записей с префиксом <span class="text-body">K</span>) и формулирует приоритеты для внимания.
+                      До <strong>14</strong> самых частых ключевых слов (1–2 слова в разметке). Размер на «карте» отражает частоту в текущем срезе (дата, тема, фильтры из файла).
                     </p>
-                    <p class="mb-2">
-                      Инсайт относится к проекту в целом. Параметры отображения графиков (дата, тема, поля из файла) на текст заключения не влияют.
+                    <p class="mb-0">
+                      Щёлкните по слову — оно станет фильтром для <strong>всех</strong> графиков; повторный щелчок по выбранному снимает фильтр. Для старых проектов без ключевых слов перезапустите анализ.
                     </p>
-                    <p class="mb-0" id="insightMeta" role="status"></p>
                   </div>
                 </details>
               </div>
-              <div class="insight-body-shell insight-body-shell--sentiment d-flex flex-column mt-2 min-h-0" aria-live="polite">
-                <div id="insightBody" class="insight-body-text ra-insight-panel border rounded p-3 small" style="white-space: pre-wrap;">
-                  Загрузка…
+              <div class="chart-stage chart-stage--keywords mt-2 position-relative">
+                <div id="keywordChartEmpty"
+                     class="ra-keyword-chart-empty text-muted small border rounded px-3 py-3 d-none align-items-center justify-content-center text-center"
+                     role="status" aria-live="polite">
+                  Нет данных по ключевым словам для текущего среза. Если проект анализировался до появления этой функции, запустите анализ снова.
                 </div>
-                <button type="button" class="btn btn-link btn-sm px-0 mt-2 align-self-start d-none" id="insightToggleBtn"
-                        aria-expanded="false" aria-controls="insightBody">Показать полностью</button>
+                <canvas id="chartKeywords" class="d-none" aria-label="Облако ключевых слов, до 14 слов, щелчок — фильтр"></canvas>
               </div>
             </div>
           </div>
@@ -299,15 +309,44 @@
         </div>
       </div>
     </div>
+    <div class="tab-pane fade" id="pane-insight" role="tabpanel" aria-labelledby="tab-insight">
+      <div class="card mb-0" id="insightCard">
+        <div class="card-header">Краткий бизнес-инсайт</div>
+        <div class="card-body d-flex flex-column flex-grow-1">
+          <div class="ra-chart-prelude">
+            <details class="small border ra-hint rounded px-2 py-2 mb-0">
+              <summary class="fw-semibold text-secondary user-select-none" aria-label="Подсказка по бизнес-инсайту">Подсказка</summary>
+              <div class="text-muted mt-2 mb-0">
+                <p class="mb-2">
+                  Краткое заключение формируется автоматически после завершения анализа. Модель использует сводные показатели и фрагмент выборки (первые 50 записей с префиксом <span class="text-body">K</span>) и формулирует приоритеты для внимания.
+                </p>
+                <p class="mb-2">
+                  Инсайт относится к проекту в целом. Параметры отображения графиков (дата, тема, поля из файла) на текст заключения не влияют.
+                </p>
+                <p class="mb-0" id="insightMeta" role="status"></p>
+              </div>
+            </details>
+          </div>
+          <div class="insight-body-shell d-flex flex-column mt-2 min-h-0" aria-live="polite">
+            <div id="insightBody" class="insight-body-text ra-insight-panel border rounded p-3 small" style="white-space: pre-wrap;">
+              Загрузка…
+            </div>
+            <button type="button" class="btn btn-link btn-sm px-0 mt-2 align-self-start d-none" id="insightToggleBtn"
+                    aria-expanded="false" aria-controls="insightBody">Показать полностью</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="tab-pane fade" id="pane-table" role="tabpanel" aria-labelledby="tab-table">
-      <div class="card mb-3">
-        <div class="card-header">Фильтры</div>
+      <details class="card ra-reviews-filters-details mb-3" id="reviewsFiltersDetails">
+        <summary class="card-header ra-reviews-filters-details__summary"
+                 aria-label="Фильтры отзывов: развернуть или свернуть блок">Фильтры</summary>
         <div class="card-body">
           <details class="small border ra-hint rounded px-2 py-2 mb-3">
             <summary class="fw-semibold text-secondary user-select-none" aria-label="Справка по таблице и фильтрам">Подсказка</summary>
             <div class="text-muted mt-2 mb-0">
               Таблица содержит обработанные отзывы (записи с префиксом <span class="text-body">K</span>).
-              <strong>Тональность</strong> — итог по тексту. <strong>Тема</strong> — одна метка на отзыв; в фильтре — точное совпадение. <strong>Текст</strong> и <strong>Дата</strong> — по вхождению фрагмента. Дополнительные поля — колонкам-фильтрам из файла. По 10 строк, страницы внизу и вверху.
+              <strong>Тональность</strong> — итог по тексту. <strong>Тема</strong> — одна метка на отзыв; в фильтре — точное совпадение. <strong>Ключевые слова</strong> — одно из слов разметки; точное совпадение без учёта регистра. <strong>Текст</strong> и <strong>Дата</strong> — по вхождению фрагмента. Дополнительные поля — колонкам-фильтрам из файла. По 10 строк, страницы внизу и вверху.
             </div>
           </details>
           <div class="row g-2 align-items-end">
@@ -320,6 +359,12 @@
             <div class="col-6 col-md-4 col-lg-2">
               <label class="form-label small mb-0" for="filterTopic">Тема</label>
               <select class="form-select form-select-sm" id="filterTopic" aria-label="Фильтр по теме отзыва"></select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-0" for="filterKeyword">Ключевые слова</label>
+              <select class="form-select form-select-sm" id="filterKeyword" aria-label="Фильтр по ключевому слову отзыва">
+                <option value="">— все —</option>
+              </select>
             </div>
             <div class="col-12 col-md-6 col-lg-3">
               <label class="form-label small mb-0" for="filterQ">Текст отзыва</label>
@@ -336,7 +381,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </details>
       <div class="card">
         <div class="card-header ra-reviews-toolbar d-flex flex-wrap align-items-center justify-content-between gap-3 border-bottom py-3"
              id="tablePagerTop">
@@ -358,6 +403,7 @@
                 <tr id="resultsTableHeadRow">
                   <th>Тональность</th>
                   <th>Тема</th>
+                  <th>Ключевые слова</th>
                   <th>Текст</th>
                 </tr>
               </thead>
@@ -401,6 +447,7 @@
       <div class="text-muted mt-2 mb-0">
         Для ограничения периода укажите даты «с» и «по» и нажмите «Применить». Для отбора по теме выберите значение в поле «Тема в отзыве».
         Для колонок, заданных как фильтры при загрузке (например, регион, канал), доступны перечни уникальных значений; вариант «— все —» снимает ограничение.
+        Фильтр по ключевому слову задаётся щелчком по слову на карте «Ключевые слова».
       </div>
     </details>
     <div class="row g-2 align-items-end">
@@ -429,6 +476,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js" crossorigin="anonymous"></script>
 <script>
   globalThis.__PROJECT_ID__ = "{{ project_id }}";
 </script>

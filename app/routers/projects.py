@@ -17,6 +17,7 @@ from app.schemas.api import (
     InsightResponse,
     JobStatusResponse,
     MappingUpdate,
+    KeywordCloudItem,
     PainPointItem,
     ProjectCreate,
     ProjectCreateResponse,
@@ -483,6 +484,7 @@ async def scatter_points(
     date_from: str | None = None,
     date_to: str | None = None,
     chart_topic: str | None = Query(None, description="Поиск по вхождению в тему отзыва"),
+    chart_keyword: str | None = Query(None, description="Фильтр по ключевому слову (как на дашборде)"),
     group_by: str = Query("day", description="Группировка по времени: day, week, month, quarter, year"),
 ) -> ScatterResponse:
     _oid(project_id)
@@ -500,6 +502,7 @@ async def scatter_points(
     date_col = project.get("date_column")
     fc = _chart_filter_substrings(request, project)
     ds = project.get("data_source") or "file"
+    ck = (chart_keyword or "").strip() or None
     raw_points, topic_colors, has_axis = await build_scatter_points(
         db,
         project_id,
@@ -511,6 +514,7 @@ async def scatter_points(
         filter_substrings=fc,
         group_by=gb,
         data_source=ds,
+        chart_keyword=ck,
     )
     points = [ScatterPoint(**p) for p in raw_points]
     return ScatterResponse(points=points, topic_colors=topic_colors, has_date_axis=has_axis)
@@ -524,6 +528,7 @@ async def reviews_by_date(
     date: Annotated[str, Query(description="Дата начала (YYYY-MM-DD); с date_to — диапазон включительно")],
     date_to: str | None = Query(None, description="Конец диапазона YYYY-MM-DD, включительно"),
     chart_topic: str | None = Query(None, description="Поиск по вхождению в тему отзыва"),
+    chart_keyword: str | None = Query(None, description="Фильтр по ключевому слову (как на дашборде)"),
 ) -> ReviewsByDateResponse:
     _oid(project_id)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
@@ -558,6 +563,7 @@ async def reviews_by_date(
     ds = project.get("data_source") or "file"
     m = project.get("m_rows")
     m_rows = int(m) if m is not None else None
+    ck = (chart_keyword or "").strip() or None
     rows = await list_reviews_for_date(
         db,
         project_id,
@@ -567,6 +573,7 @@ async def reviews_by_date(
         k,
         day_to_iso=d_to,
         chart_topic=chart_topic,
+        chart_keyword=ck,
         filter_substrings=fc,
         data_source=ds,
         m_rows=m_rows,
@@ -635,6 +642,10 @@ async def list_results(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     sentiment: str | None = None,
     topic: str | None = Query(None, description="Точное соответствие единственной теме отзыва"),
+    keyword: str | None = Query(
+        None,
+        description="Точное совпадение с одним из ключевых слов отзыва (как в разметке)",
+    ),
     q: str | None = None,
     date_q: str | None = None,
 ) -> ResultsPage:
@@ -650,10 +661,13 @@ async def list_results(
             fc[str(col)] = str(v)
 
     all_rows = await load_all_row_results(db, project_id, project)
+    kw = (keyword or "").strip() or None
+
     filtered = filter_row_results(
         all_rows,
         sentiment=sentiment,
         topic=topic,
+        keyword=kw,
         text_q=q,
         date_q=date_q,
         filter_substrings=fc,
@@ -696,6 +710,10 @@ async def project_dashboard(
     date_from: str | None = None,
     date_to: str | None = None,
     chart_topic: str | None = Query(None, description="Поиск по вхождению в тему отзыва"),
+    chart_keyword: str | None = Query(
+        None,
+        description="Точное совпадение с одним из ключевых слов отзыва (как на графике); фильтрует все графики",
+    ),
 ) -> DashboardResponse:
     _oid(project_id)
     project = await projects_coll(db).find_one({"_id": ObjectId(project_id)})
@@ -708,7 +726,8 @@ async def project_dashboard(
     date_col = project.get("date_column")
     fc = _chart_filter_substrings(request, project)
     ds = project.get("data_source") or "file"
-    sc, tc, n, tl_raw, has_axis, slices_raw, pain_raw = await build_dashboard(
+    ck = (chart_keyword or "").strip() or None
+    sc, tc, n, tl_raw, has_axis, slices_raw, pain_raw, kw_cloud, active_kw = await build_dashboard(
         db,
         project_id,
         date_col,
@@ -718,6 +737,7 @@ async def project_dashboard(
         chart_topic=chart_topic,
         filter_substrings=fc,
         data_source=ds,
+        chart_keyword=ck,
     )
     timeline = [TimelinePoint(**x) for x in tl_raw]
     return DashboardResponse(
@@ -728,4 +748,6 @@ async def project_dashboard(
         has_date_axis=has_axis,
         topic_sentiment=[TopicSentimentSlice(**x) for x in slices_raw],
         pain_points=[PainPointItem(**x) for x in pain_raw],
+        keyword_cloud=[KeywordCloudItem(**x) for x in kw_cloud],
+        active_chart_keyword=active_kw,
     )

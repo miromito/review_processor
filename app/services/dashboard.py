@@ -168,12 +168,13 @@ async def load_analyzed_pairs(
     return pairs
 
 
-def chart_filters_active(
+def chart_slice_active(
     date_from: str | None,
     date_to: str | None,
     chart_topic: str | None,
     filter_substrings: dict[str, str] | None,
 ) -> bool:
+    """Фильтры среза без ключевого слова с графика."""
     fc = filter_substrings or {}
     if fc:
         return True
@@ -186,6 +187,64 @@ def chart_filters_active(
     return False
 
 
+def chart_filters_active(
+    date_from: str | None,
+    date_to: str | None,
+    chart_topic: str | None,
+    filter_substrings: dict[str, str] | None,
+    chart_keyword: str | None = None,
+) -> bool:
+    if (chart_keyword or "").strip():
+        return True
+    return chart_slice_active(date_from, date_to, chart_topic, filter_substrings)
+
+
+def _row_keyword_cells(res: dict[str, Any]) -> list[str]:
+    raw = res.get("keywords") or []
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = " ".join(x.split()).strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def row_matches_chart_keyword(res: dict[str, Any], chart_keyword_cf: str) -> bool:
+    """Точное совпадение одной из меток ключевых слов (без учёта регистра)."""
+    for s in _row_keyword_cells(res):
+        if s.casefold() == chart_keyword_cf:
+            return True
+    return False
+
+
+def keyword_cloud_counts(
+    pairs: list[tuple[int, dict[str, Any], dict[str, Any]]],
+    *,
+    top_n: int = 14,
+) -> list[dict[str, Any]]:
+    """По одному счёту на слово на отзыв; канонический ключ — casefold, подпись — первый встреченный вариант."""
+    counts: dict[str, int] = defaultdict(int)
+    label_by_cf: dict[str, str] = {}
+    for _idx, _row, res in pairs:
+        seen_cf: set[str] = set()
+        for s in _row_keyword_cells(res):
+            cf = s.casefold()
+            if cf in seen_cf:
+                continue
+            seen_cf.add(cf)
+            counts[cf] += 1
+            if cf not in label_by_cf:
+                label_by_cf[cf] = s
+    items = [{"keyword": label_by_cf[k], "count": int(counts[k])} for k in counts]
+    items.sort(key=lambda x: (-x["count"], str(x["keyword"]).casefold()))
+    cap = max(1, min(50, int(top_n)))
+    return items[:cap]
+
+
 def filter_pairs_for_charts(
     pairs: list[tuple[int, dict[str, Any], dict[str, Any]]],
     *,
@@ -194,10 +253,12 @@ def filter_pairs_for_charts(
     date_to: str | None,
     chart_topic: str | None,
     filter_substrings: dict[str, str],
+    chart_keyword: str | None = None,
 ) -> list[tuple[int, dict[str, Any], dict[str, Any]]]:
     df = (date_from or "").strip() or None
     dt = (date_to or "").strip() or None
     tq = (chart_topic or "").strip().lower() or None
+    ck = (chart_keyword or "").strip().casefold() or None
     out: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
     for idx, row, res in pairs:
         if date_column and (df or dt):
@@ -220,6 +281,8 @@ def filter_pairs_for_charts(
                 skip = True
                 break
         if skip:
+            continue
+        if ck and not row_matches_chart_keyword(res, ck):
             continue
         out.append((idx, row, res))
     return out
@@ -404,19 +467,70 @@ async def build_dashboard(
     chart_topic: str | None = None,
     filter_substrings: dict[str, str] | None = None,
     data_source: str | None = "file",
-) -> tuple[dict[str, int], dict[str, int], int, list[dict[str, Any]], bool, list[dict[str, Any]], list[dict[str, Any]]]:
+    chart_keyword: str | None = None,
+) -> tuple[dict[str, int], dict[str, int], int, list[dict[str, Any]], bool, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str | None]:
     pairs = await load_analyzed_pairs(db, project_id, k_rows, data_source=data_source)
     fc = filter_substrings or {}
-    if chart_filters_active(date_from, date_to, chart_topic, fc):
-        pairs = filter_pairs_for_charts(
+    ck_raw = (chart_keyword or "").strip() or None
+    ck_cf = ck_raw.casefold() if ck_raw else None
+    slice_on = chart_slice_active(date_from, date_to, chart_topic, fc)
+
+    if not slice_on and not ck_cf:
+        pairs_base = pairs
+        pairs_charts = pairs
+    elif not ck_cf:
+        pairs_base = filter_pairs_for_charts(
             pairs,
             date_column=date_column,
             date_from=date_from,
             date_to=date_to,
             chart_topic=chart_topic,
             filter_substrings=fc,
+            chart_keyword=None,
         )
-    return aggregates_from_pairs(pairs, date_column)
+        pairs_charts = pairs_base
+    elif not slice_on:
+        pairs_base = pairs
+        pairs_charts = filter_pairs_for_charts(
+            pairs,
+            date_column=date_column,
+            date_from=date_from,
+            date_to=date_to,
+            chart_topic=chart_topic,
+            filter_substrings=fc,
+            chart_keyword=ck_raw,
+        )
+    else:
+        pairs_base = filter_pairs_for_charts(
+            pairs,
+            date_column=date_column,
+            date_from=date_from,
+            date_to=date_to,
+            chart_topic=chart_topic,
+            filter_substrings=fc,
+            chart_keyword=None,
+        )
+        pairs_charts = filter_pairs_for_charts(
+            pairs,
+            date_column=date_column,
+            date_from=date_from,
+            date_to=date_to,
+            chart_topic=chart_topic,
+            filter_substrings=fc,
+            chart_keyword=ck_raw,
+        )
+
+    sc, tc, n, tl_raw, has_axis, slices_raw, pain_raw = aggregates_from_pairs(pairs_charts, date_column)
+    kw_cloud = keyword_cloud_counts(pairs_base, top_n=14)
+    active_kw: str | None = None
+    if ck_cf:
+        for it in kw_cloud:
+            if str(it.get("keyword", "")).casefold() == ck_cf:
+                active_kw = str(it["keyword"])
+                break
+        if active_kw is None and ck_raw:
+            active_kw = ck_raw
+    return sc, tc, n, tl_raw, has_axis, slices_raw, pain_raw, kw_cloud, active_kw
 
 
 async def build_scatter_points(
@@ -431,12 +545,13 @@ async def build_scatter_points(
     filter_substrings: dict[str, str] | None = None,
     group_by: str = "day",
     data_source: str | None = "file",
+    chart_keyword: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str], bool]:
     if not date_column:
         return [], {}, False
     pairs = await load_analyzed_pairs(db, project_id, k_rows, data_source=data_source)
     fc = filter_substrings or {}
-    if chart_filters_active(date_from, date_to, chart_topic, fc):
+    if chart_filters_active(date_from, date_to, chart_topic, fc, chart_keyword):
         pairs = filter_pairs_for_charts(
             pairs,
             date_column=date_column,
@@ -444,6 +559,7 @@ async def build_scatter_points(
             date_to=date_to,
             chart_topic=chart_topic,
             filter_substrings=fc,
+            chart_keyword=chart_keyword,
         )
     return scatter_bubbles_from_pairs(pairs, date_column, group_by)
 
@@ -458,6 +574,7 @@ async def list_reviews_for_date(
     *,
     day_to_iso: str | None = None,
     chart_topic: str | None = None,
+    chart_keyword: str | None = None,
     filter_substrings: dict[str, str] | None = None,
     data_source: str | None = "file",
     m_rows: int | None = None,
@@ -466,6 +583,7 @@ async def list_reviews_for_date(
         return []
 
     tq = (chart_topic or "").strip().lower() or None
+    ck = (chart_keyword or "").strip() or None
     fc = filter_substrings or {}
     d_end = (day_to_iso or "").strip() or None
 
@@ -502,6 +620,9 @@ async def list_reviews_for_date(
                 break
         if skip:
             continue
+        if ck and not row_matches_chart_keyword(res, ck.casefold()):
+            continue
+        kws = _row_keyword_cells(res)
         out.append(
             {
                 "row_index": idx,
@@ -509,6 +630,7 @@ async def list_reviews_for_date(
                 "text": str(data.get(text_column, "") or ""),
                 "sentiment": str(res.get("sentiment") or ""),
                 "topics": topics,
+                "keywords": kws,
                 "primary_topic": primary_topic(topics),
                 "rationale": str(res.get("rationale") or ""),
             },

@@ -50,6 +50,9 @@ def row_result_from_row(
     date_val = data.get(date_column) if date_column else None
     if date_val is not None and not isinstance(date_val, str):
         date_val = str(date_val)
+    kw = None
+    if res_doc and isinstance(res_doc.get("keywords"), list):
+        kw = [str(x) for x in res_doc.get("keywords") or [] if str(x).strip()]
     return RowResult(
         row_index=idx,
         text=str(data.get(text_column, "") or ""),
@@ -57,6 +60,7 @@ def row_result_from_row(
         date=date_val,
         sentiment=res_doc.get("sentiment") if res_doc else None,
         topics=list(res_doc.get("topics") or []) if res_doc and isinstance(res_doc.get("topics"), list) else None,
+        keywords=kw,
         rationale=res_doc.get("rationale") if res_doc else None,
     )
 
@@ -110,17 +114,28 @@ async def load_all_row_results(db: AsyncIOMotorDatabase, project_id: str, projec
     return out
 
 
+def _row_has_keyword_match(keywords: list[str] | None, needle_cf: str) -> bool:
+    if not needle_cf:
+        return True
+    for x in keywords or []:
+        if isinstance(x, str) and x.strip().casefold() == needle_cf:
+            return True
+    return False
+
+
 def filter_row_results(
     rows: list[RowResult],
     *,
     sentiment: str | None,
     topic: str | None,
+    keyword: str | None,
     text_q: str | None,
     date_q: str | None,
     filter_substrings: dict[str, str],
 ) -> list[RowResult]:
     want_sent = _norm_sentiment_filter(sentiment)
     t_filter = topic.strip().casefold() if topic and topic.strip() else None
+    kw_filter = keyword.strip().casefold() if keyword and keyword.strip() else None
     q = text_q.strip().casefold() if text_q and text_q.strip() else None
     dq = date_q.strip().casefold() if date_q and date_q.strip() else None
 
@@ -131,6 +146,9 @@ def filter_row_results(
                 return False
         if t_filter is not None:
             if (_topic_slot(topics, 0) or "").casefold() != t_filter:
+                return False
+        if kw_filter is not None:
+            if not _row_has_keyword_match(r.keywords, kw_filter):
                 return False
         if q is not None:
             if q not in (r.text or "").casefold():
@@ -150,12 +168,22 @@ def filter_row_results(
 def build_results_facets(rows: list[RowResult], filter_column_names: list[str]) -> dict[str, Any]:
     sents: set[str] = set()
     topic_set: set[str] = set()
+    keyword_by_cf: dict[str, str] = {}
 
     for r in rows:
         sents.add(_canonical_row_sentiment(r.sentiment))
         t0 = _topic_slot(r.topics, 0)
         if t0 is not None:
             topic_set.add(t0)
+        for x in r.keywords or []:
+            if not isinstance(x, str):
+                continue
+            s = x.strip()
+            if not s:
+                continue
+            cf = s.casefold()
+            if cf not in keyword_by_cf:
+                keyword_by_cf[cf] = s
 
     def sortu(xs: set[str]) -> list[str]:
         return sorted(xs, key=str.casefold)
@@ -172,9 +200,11 @@ def build_results_facets(rows: list[RowResult], filter_column_names: list[str]) 
             if s:
                 per_col[c].add(s)
     filter_choices = {c: sortu(per_col.get(c, set())) for c in filter_labels}
+    keywords_sorted = sorted(keyword_by_cf.values(), key=str.casefold)
     return {
         "sentiments": sortu(sents),
         "topics": sortu(topic_set),
+        "keywords": keywords_sorted,
         "filter_columns": filter_labels,
         "filter_choices": filter_choices,
     }

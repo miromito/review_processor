@@ -9,7 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings
 from app.db import projects_coll
-from app.services.dashboard import aggregates_from_pairs, load_analyzed_pairs
+from app.services.dashboard import aggregates_from_pairs, keyword_cloud_counts, load_analyzed_pairs
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,8 @@ SYSTEM = """Ты бизнес-аналитик по отзывам. Ниже —
   - `negative`, `positive`, `neutral`, `unknown` — разбивка по тональностям **внутри** этой темы;
   - `negative_pct` — доля негативных среди отзывов с этой темой, % (0–100);
   - `pain_index` — **сводный показатель «зоны риска»** по формуле «число негативов × √объёма»; выше — тема сочетает и **масштаб** (много отзывов) и **долю/объём негатива**. Сравнивай темы между собой, не пересказывай формулу пользователю; объясняй смысл словами (где сильнее напряжение, где «много, но в основном нейтраль/позитив»).
-- `sample_reviews_first_50` — до 50 **укороченных** текстов (обрезка); по каждому: `row` (номер/индекс строки в датасете), `text`, `sentiment`, `topics` (темы, присвоенные моделью). Это **иллюстрации**, не полный перечень отзывов.
+- `top_keywords` — словарь «ключевое слово (1–2 слова) → сколько отзывов», по частоте в датасете; дополняет темы более конкретными сигналами.
+- `sample_reviews_first_50` — до 50 **укороченных** текстов (обрезка); по каждому: `row` (номер/индекс строки в датасете), `text`, `sentiment`, `topics`, `keywords`. Это **иллюстрации**, не полный перечень отзывов.
 
 Инсайт: что **главное** вынести для руководства или продукта; при необходимости одна мысль про риски и одна — про сильные стороны, без дублирования таблицы цифр."""
 
@@ -58,6 +59,7 @@ async def generate_and_store_insight(
     sc, tc, n, _tl, _axis, _slices, pain = aggregates_from_pairs(pairs, date_col)
     topic_sorted = sorted(tc.items(), key=lambda x: -x[1])[:10] if tc else []
     leading = topic_sorted[0][0] if topic_sorted else "—"
+    kw_top = keyword_cloud_counts(pairs, top_n=12)
 
     samples: list[dict[str, Any]] = []
     for idx, row, res in pairs[:50]:
@@ -72,6 +74,7 @@ async def generate_and_store_insight(
                 "text": cell[:450],
                 "sentiment": res.get("sentiment"),
                 "topics": res.get("topics"),
+                "keywords": res.get("keywords") if isinstance(res.get("keywords"), list) else [],
             },
         )
 
@@ -81,6 +84,7 @@ async def generate_and_store_insight(
         "top_topics_with_volume": {t: c for t, c in topic_sorted[:8]},
         "top_pain_topics": pain[:6] if pain else [],
         "statistically_leading_topic": leading,
+        "top_keywords": {str(x["keyword"]): int(x["count"]) for x in kw_top},
         "sample_reviews_first_50": samples,
     }
     human = json.dumps(payload, ensure_ascii=False)

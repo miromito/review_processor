@@ -124,11 +124,33 @@ a {
   min-height: 1.5rem;
   min-width: 1.5rem;
   vertical-align: middle;
+  cursor: help;
 }
 
 .ra-project-name-muted {
   font-weight: 500;
   color: var(--ra-ink);
+}
+
+/* Вкладка «Отзывы»: фильтры под спойлером на узких экранах */
+.ra-reviews-filters-details > summary.ra-reviews-filters-details__summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ra-reviews-filters-details > summary.ra-reviews-filters-details__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ra-reviews-filters-details > summary.ra-reviews-filters-details__summary::marker {
+  content: "";
+}
+
+@media (min-width: 768px) {
+  .ra-reviews-filters-details > summary.ra-reviews-filters-details__summary {
+    cursor: default;
+  }
 }
 
 .ra-js-analyze-poll {
@@ -211,9 +233,43 @@ a {
   }
 }
 
-.chart-stage--sentiment {
+.chart-stage--sentiment,
+.chart-stage--keywords {
   position: relative;
   width: 100%;
+}
+
+.ra-row-sentiment .chart-stage--keywords .ra-keyword-chart-empty:not(.d-none) {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+@media (min-width: 992px) {
+  .ra-row-sentiment .chart-stage--keywords {
+    flex: 0 0 auto;
+    height: 260px;
+    max-height: 260px;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .ra-row-sentiment .chart-stage--keywords {
+    flex: 0 0 auto;
+    height: 240px;
+    max-height: 240px;
+  }
+}
+
+.ra-chart-keyword-chip:not(.d-none) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#pane-insight .insight-body-text.insight-body-collapsed {
+  max-height: 18rem;
 }
 
 .insight-body-text {

@@ -91,6 +91,7 @@ async def run_analysis_job(db: AsyncIOMotorDatabase, job_id: str, project_id: st
                             "row_index": abs_idx,
                             "sentiment": br.get("sentiment", "neutral"),
                             "topics": br.get("topics") or [],
+                            "keywords": br.get("keywords") or [],
                             "rationale": br.get("rationale", ""),
                         }
                     },
@@ -353,6 +354,7 @@ async def run_incremental_analysis_job(
                             "row_index": abs_idx,
                             "sentiment": br.get("sentiment", "neutral"),
                             "topics": br.get("topics") or [],
+                            "keywords": br.get("keywords") or [],
                             "rationale": br.get("rationale", ""),
                         }
                     },

@@ -134,6 +134,7 @@ class RowResult(BaseModel):
     date: str | None
     sentiment: str | None
     topics: list[str] | None
+    keywords: list[str] | None = None
     rationale: str | None = None
 
 
@@ -179,6 +180,11 @@ class PainPointItem(BaseModel):
     pain_index: float = 0.0
 
 
+class KeywordCloudItem(BaseModel):
+    keyword: str
+    count: int = 0
+
+
 class DashboardResponse(BaseModel):
     sentiment_counts: dict[str, int]
     topic_counts: dict[str, int]
@@ -187,6 +193,14 @@ class DashboardResponse(BaseModel):
     has_date_axis: bool = False
     topic_sentiment: list[TopicSentimentSlice] = Field(default_factory=list)
     pain_points: list[PainPointItem] = Field(default_factory=list)
+    keyword_cloud: list[KeywordCloudItem] = Field(
+        default_factory=list,
+        description="До 14 наиболее частых ключевых слов по текущим фильтрам (облако; без учёта выбранного слова как фильтра)",
+    )
+    active_chart_keyword: str | None = Field(
+        default=None,
+        description="Выбранное на графике ключевых слов — применяется ко всем графикам; пусто — фильтр не активен",
+    )
 
 
 class ResultsPage(BaseModel):
@@ -199,6 +213,10 @@ class ResultsPage(BaseModel):
 class ResultsFacetsResponse(BaseModel):
     sentiments: list[str] = Field(default_factory=list)
     topics: list[str] = Field(default_factory=list, description="Уникальные темы (по одной на отзыв)")
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Уникальные ключевые слова из разметки отзывов (для фильтра таблицы)",
+    )
     filter_columns: list[str] = Field(default_factory=list)
     filter_choices: dict[str, list[str]] = Field(
         default_factory=dict,
@@ -229,6 +247,7 @@ class ReviewByDateItem(BaseModel):
     text: str
     sentiment: str
     topics: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     primary_topic: str
     rationale: str = ""
 
