@@ -168,7 +168,7 @@ async def _send_lifecycle_email(
     if success:
         subj = f"Анализ завершён: {name}"
         body = (
-            f"Проект «{name}» обработан. Результаты: графики, таблица, бизнес-инсайт.\n\n"
+            f"Проект «{name}» обработан. Результаты: графики, таблица, аналитика.\n\n"
             f"Открыть: {link}\n"
         )
     else:
@@ -371,7 +371,7 @@ async def run_incremental_analysis_job(
             if p2:
                 await generate_and_store_insight(db, project_id, p2, settings)
         except Exception:
-            logger.exception("Инсайт после дозаливки не сгенерирован")
+                logger.exception("Аналитика после дозаливки не сгенерирована")
 
     finished = datetime.now(timezone.utc)
     await project_jobs_coll(db).update_one(

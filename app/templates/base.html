@@ -69,8 +69,11 @@
 </main>
 {% if not is_login %}
 <footer class="site-footer">
-  <div class="container-xxl px-3 px-lg-4 py-3">
+  <div class="container-xxl px-3 px-lg-4 py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
     <span>Анализ отзывов</span>
+    <span class="ra-footer-version font-monospace text-body-secondary"
+          title="Сборка: {{ app_version() }}"
+          aria-label="Версия приложения {{ app_version() }}">Версия {{ app_version() }}</span>
   </div>
 </footer>
 {% endif %}

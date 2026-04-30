@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+ARG APP_VERSION=local
+ENV APP_VERSION=${APP_VERSION}
+
 RUN pip install --no-cache-dir --upgrade pip
 
 COPY requirements.txt .

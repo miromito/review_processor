@@ -32,6 +32,14 @@ templates.env.globals["show_auth_nav"] = _template_show_auth_nav
 templates.env.globals["user_logged_in"] = _template_user_logged_in
 
 
+def _template_app_version() -> str:
+    v = get_settings().app_version.strip()
+    return v if v else "local"
+
+
+templates.env.globals["app_version"] = _template_app_version
+
+
 def _public_route(path: str, method: str) -> bool:
     if path.startswith("/static/"):
         return True

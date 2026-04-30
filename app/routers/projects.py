@@ -592,7 +592,7 @@ async def get_insight(project_id: str, db: Db) -> InsightResponse:
     if not project:
         raise HTTPException(404, "Проект не найден")
     if project.get("phase") != "complete":
-        raise HTTPException(400, "Инсайт доступен после анализа")
+        raise HTTPException(400, "Аналитика доступна после анализа")
     text = project.get("business_insight")
     if not text:
         return InsightResponse(insight="", generated_at=None)

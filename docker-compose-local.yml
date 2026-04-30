@@ -20,7 +20,10 @@ services:
       start_period: 30s
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
     # Монтируем код: UVicorn --reload перезапускает воркер при правках. Mongo в отдельном
     # контейнере остаётся запущенным; при необходимости только web: docker compose restart web
     volumes:
@@ -56,6 +59,7 @@ services:
       SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
       MAIL_FROM: ${MAIL_FROM:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8000}
+      APP_VERSION: ${APP_VERSION:-local}
     depends_on:
       mongo:
         condition: service_healthy

@@ -313,6 +313,31 @@
     return String(s || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
+  let insightMarkdownOptionsApplied = false;
+  function ensureInsightMarkdownOptions() {
+    if (insightMarkdownOptionsApplied) return;
+    const m = globalThis.marked;
+    if (m && typeof m.setOptions === "function") {
+      m.setOptions({ gfm: true, breaks: true });
+    }
+    insightMarkdownOptionsApplied = true;
+  }
+
+  /** Безопасный HTML из Markdown для вкладки «Аналитика». */
+  function renderInsightMarkdown(md) {
+    ensureInsightMarkdownOptions();
+    const raw = String(md || "").trim();
+    if (!raw) return "";
+    const m = globalThis.marked;
+    const purify = globalThis.DOMPurify;
+    if (m && typeof m.parse === "function" && purify && typeof purify.sanitize === "function") {
+      const html = m.parse(raw);
+      const str = typeof html === "string" ? html : String(html ?? "");
+      return purify.sanitize(str, { USE_PROFILES: { html: true } });
+    }
+    return `<p class="mb-0">${esc(raw).replace(/\n/g, "<br>")}</p>`;
+  }
+
   function flushProjectDetailSyncToast() {
     let msg = "";
     try {
@@ -535,7 +560,7 @@
       btnEl.classList.add("d-none");
       btnEl.setAttribute("aria-expanded", "false");
       btnEl.textContent = "Показать полностью";
-      btnEl.setAttribute("aria-label", "Показать полный текст инсайта");
+      btnEl.setAttribute("aria-label", "Показать полностью текст аналитики");
       btnEl.onclick = null;
     }
   }
@@ -548,7 +573,7 @@
       bodyEl.style.cursor = "pointer";
       bodyEl.setAttribute("tabindex", "0");
       bodyEl.setAttribute("role", "button");
-      bodyEl.setAttribute("aria-label", "Развернуть полный текст инсайта");
+      bodyEl.setAttribute("aria-label", "Развернуть полностью текст аналитики");
       bodyEl.onclick = () => expand();
       bodyEl.onkeydown = (ev) => {
         if (ev.key === "Enter" || ev.key === " ") {
@@ -569,7 +594,7 @@
       bodyEl.onkeydown = null;
       btnEl.setAttribute("aria-expanded", "true");
       btnEl.textContent = "Свернуть";
-      btnEl.setAttribute("aria-label", "Свернуть текст инсайта");
+      btnEl.setAttribute("aria-label", "Свернуть текст аналитики");
     }
 
     function collapse() {
@@ -577,7 +602,7 @@
       bodyEl.classList.remove("insight-body-expanded");
       btnEl.setAttribute("aria-expanded", "false");
       btnEl.textContent = "Показать полностью";
-      btnEl.setAttribute("aria-label", "Показать полный текст инсайта");
+      btnEl.setAttribute("aria-label", "Показать полностью текст аналитики");
       wireCollapsedInteractions();
     }
 
@@ -611,13 +636,16 @@
     const toggleBtn = document.getElementById("insightToggleBtn");
     if (!meta || !body) return;
     meta.textContent = "Получение текста…";
+    body.classList.remove("ra-insight-markdown");
+    body.textContent = "Загрузка…";
     if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
     try {
       const res = await fetch(`/api/projects/${projectId}/insight`);
       const data = await res.json();
       if (!res.ok) {
-        const errMsg = typeof data.detail === "string" ? data.detail : "Текст заключения не получен.";
+        const errMsg = typeof data.detail === "string" ? data.detail : "Текст аналитики не получен.";
         meta.textContent = "";
+        body.classList.remove("ra-insight-markdown");
         body.textContent = errMsg;
         if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
         return;
@@ -631,12 +659,18 @@
       } else {
         meta.textContent = "";
       }
-      body.textContent =
-        text ||
-        "Заключение отсутствует. Оно появится после завершения анализа. При необходимости запустите анализ снова.";
+      if (text) {
+        body.classList.add("ra-insight-markdown");
+        body.innerHTML = renderInsightMarkdown(text);
+      } else {
+        body.classList.remove("ra-insight-markdown");
+        body.textContent =
+          "Текст аналитики отсутствует. Он появится после завершения анализа. При необходимости запустите анализ снова.";
+      }
       if (toggleBtn) setupInsightExpand(body, toggleBtn);
     } catch (e) {
       meta.textContent = "";
+      body.classList.remove("ra-insight-markdown");
       body.textContent = esc(e.message);
       if (toggleBtn) resetInsightExpandUi(body, toggleBtn);
     }
@@ -757,8 +791,10 @@
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: 6 },
         plugins: {
-          legend: { position: "bottom" },
+          legend: { position: "bottom", align: "center" },
           tooltip: { enabled: Boolean(sk.length) },
         },
       },
@@ -867,7 +903,7 @@
           responsive: true,
           maintainAspectRatio: false,
           scales: { x: { stacked: true }, y: { stacked: true } },
-          plugins: { legend: { position: "top" } },
+          plugins: { legend: { position: "top", align: "center" } },
         },
       });
     }
@@ -997,6 +1033,7 @@
             },
           },
           plugins: {
+            legend: { position: "top", align: "center" },
             tooltip: {
               callbacks: {
                 label(ctx) {

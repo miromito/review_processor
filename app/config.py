@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     mail_from: str = ""
     # Ссылка на проект в письмах (без хвоста)
     app_base_url: str = "http://127.0.0.1:8000"
+    # Версия для подвала UI (например короткий SHA: задаётся при `docker compose build` или в .env)
+    app_version: str = ""
 
     @model_validator(mode="after")
     def jwt_required_when_auth_on(self):

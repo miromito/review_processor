@@ -22,5 +22,7 @@ jobs:
           script: |
             cd /var/www/app/review_processor
             git pull origin main
+            # Версия в подвале: короткий SHA текущего коммита (меняется после каждого pull)
+            export APP_VERSION="$(git rev-parse --short HEAD)"
             docker compose down
             docker compose up -d --build

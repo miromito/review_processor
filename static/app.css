@@ -361,6 +361,24 @@ a {
 .chart-stage--keywords {
   position: relative;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Узкая колонка по центру карточки: кольцо тональности и облако слов */
+.ra-chart-center-slot {
+  width: min(100%, 300px);
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  position: relative;
+}
+
+.ra-chart-center-slot--keywords {
+  width: min(100%, 400px);
+  max-width: 400px;
 }
 
 .ra-row-sentiment .chart-stage--keywords .ra-keyword-chart-empty:not(.d-none) {
@@ -383,6 +401,25 @@ a {
     height: 240px;
     max-height: 240px;
   }
+}
+
+/* «Темы и тональность» / «Боль»: без фиксированной высоты Chart.js + flex-grow раздувают canvas
+   при каждом открытии/закрытии «Подсказка» (details). */
+.ra-row-topics > [class*="col"] {
+  min-height: 0;
+}
+
+.ra-row-topics .ra-chart-card-body {
+  min-height: 0;
+}
+
+.ra-row-topics .ra-chart-stage-fixed-h {
+  flex: 0 0 auto;
+  width: 100%;
+  height: clamp(260px, 36vh, 400px);
+  min-height: 240px;
+  max-height: 400px;
+  overflow: hidden;
 }
 
 .ra-chart-keyword-chip:not(.d-none) {
@@ -729,6 +766,114 @@ button.ra-review-expand-link:focus-visible {
 .ra-insight-panel {
   background: var(--ra-surface) !important;
   border: 1px solid var(--ra-border) !important;
+}
+
+/* Вкладка «Аналитика»: отрисовка Markdown */
+#insightBody.ra-insight-markdown {
+  white-space: normal;
+  line-height: 1.55;
+}
+
+#insightBody.ra-insight-markdown > *:first-child {
+  margin-top: 0;
+}
+
+#insightBody.ra-insight-markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+#insightBody.ra-insight-markdown h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.015em;
+  color: var(--ra-ink);
+}
+
+#insightBody.ra-insight-markdown h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 0.85rem;
+  margin-bottom: 0.35rem;
+  color: var(--ra-ink);
+}
+
+#insightBody.ra-insight-markdown p {
+  margin-bottom: 0.65rem;
+}
+
+#insightBody.ra-insight-markdown ul,
+#insightBody.ra-insight-markdown ol {
+  margin-bottom: 0.65rem;
+  padding-left: 1.25rem;
+}
+
+#insightBody.ra-insight-markdown li {
+  margin-bottom: 0.35rem;
+}
+
+#insightBody.ra-insight-markdown li::marker {
+  color: var(--ra-ink-muted);
+}
+
+#insightBody.ra-insight-markdown strong {
+  font-weight: 600;
+  color: var(--ra-ink);
+}
+
+#insightBody.ra-insight-markdown code {
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+#insightBody.ra-insight-markdown pre {
+  font-size: 0.8125rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--ra-radius-sm);
+  background: rgba(15, 23, 42, 0.06);
+  overflow-x: auto;
+  margin-bottom: 0.65rem;
+}
+
+#insightBody.ra-insight-markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+#insightBody.ra-insight-markdown blockquote {
+  margin: 0 0 0.65rem;
+  padding-left: 0.85rem;
+  border-left: 3px solid rgba(15, 39, 68, 0.22);
+  color: var(--ra-ink-muted);
+}
+
+#insightBody.ra-insight-markdown hr {
+  margin: 0.75rem 0;
+  opacity: 0.35;
+}
+
+#insightBody.ra-insight-markdown a {
+  color: var(--ra-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+#insightBody.ra-insight-markdown table {
+  font-size: 0.8125rem;
+  width: 100%;
+  margin-bottom: 0.65rem;
+  border-collapse: collapse;
+}
+
+#insightBody.ra-insight-markdown th,
+#insightBody.ra-insight-markdown td {
+  border: 1px solid var(--ra-border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
 }
 
 /* Подсказки: белая карточка вместо серой плашки */
