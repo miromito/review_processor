@@ -37,6 +37,12 @@ class ProjectSummary(BaseModel):
     m_rows: int
     updated_at: datetime | None
     created_at: datetime | None
+    data_source: Literal["file", "spreadsheet"] = "file"
+
+
+class ProjectRenameBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    model_config = ConfigDict(str_strip_whitespace=True)
 
 
 class ProjectDetail(BaseModel):

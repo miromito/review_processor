@@ -89,13 +89,27 @@
 
   const ICON_THREE_DOTS = `<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" class="d-block" aria-hidden="true" focusable="false"><path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/></svg>`;
 
-  function projectDeleteMenu(p) {
+  const SHEET_SYNC_TITLE =
+    "Доступно для проектов с Google Таблицей после успешного анализа";
+  const EXPORT_CSV_TITLE = "Доступно после успешного анализа";
+
+  function projectActionsMenu(p) {
     const id = esc(p.id);
+    const src = p.data_source === "spreadsheet" ? "spreadsheet" : "file";
+    const canExport = p.phase === "complete";
+    const canSync = src === "spreadsheet" && p.phase === "complete";
+    const disExport = canExport ? "" : " disabled";
+    const disSync = canSync ? "" : " disabled";
     return `<div class="dropdown text-end">
   <button type="button" class="btn btn-sm btn-link text-body-secondary p-1 ra-project-menu-btn" data-bs-toggle="dropdown" data-bs-container="body" data-bs-offset="0,4" data-bs-auto-close="true" aria-expanded="false" aria-label="Меню с действиями по проекту">
     ${ICON_THREE_DOTS}
   </button>
   <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+    <li><button type="button" class="dropdown-item" data-action="rename-project" data-project-id="${id}">Переименовать</button></li>
+    <li><button type="button" class="dropdown-item${disExport}" data-action="export-csv" data-project-id="${id}"${disExport} title="${EXPORT_CSV_TITLE}" aria-label="Экспорт отзывов в CSV">Экспорт в CSV</button></li>
+    <li><button type="button" class="dropdown-item${disSync}" data-action="sync-sheet" data-project-id="${id}"${disSync} title="${SHEET_SYNC_TITLE}" aria-label="Синхронизировать Google Таблицу">Синхронизировать</button></li>
+    <li><button type="button" class="dropdown-item" data-action="share-project" data-project-id="${id}">Поделиться</button></li>
+    <li><hr class="dropdown-divider" role="separator" /></li>
     <li><button type="button" class="dropdown-item text-danger" data-action="delete-project" data-project-id="${id}">Удалить</button></li>
   </ul>
 </div>`;
@@ -122,7 +136,7 @@
                   <div class="small text-muted text-truncate">${file}</div>
                 </div>
                 <div class="d-flex align-items-start gap-1 flex-shrink-0">
-                  ${projectDeleteMenu(p)}
+                  ${projectActionsMenu(p)}
                 </div>
               </div>
             </div>
@@ -153,7 +167,7 @@
           <td>${esc(p.filename || "—")}</td>
           <td>${p.m_rows ?? 0}</td>
           <td class="small">${dt}</td>
-          <td class="text-end text-nowrap">${projectDeleteMenu(p)}</td>`;
+          <td class="text-end text-nowrap">${projectActionsMenu(p)}</td>`;
       tbody.append(tr);
       if (mobileList) {
         const w = document.createElement("div");
@@ -211,6 +225,15 @@
     refreshListView();
   });
 
+  function showListAlert(kind, html, autoClearMs) {
+    alertBox.innerHTML = `<div class="alert alert-${kind} mb-0 py-2" role="status">${html}</div>`;
+    if (autoClearMs > 0) {
+      globalThis.setTimeout(() => {
+        if (alertBox.querySelector(".alert")) alertBox.innerHTML = "";
+      }, autoClearMs);
+    }
+  }
+
   async function handleDeleteClick(btn) {
     const id = btn.getAttribute("data-project-id");
     if (!id) return;
@@ -227,27 +250,161 @@
       }
       const data = await res.json().catch(() => ({}));
       const msg = typeof data.detail === "string" ? data.detail : res.statusText;
-      alertBox.innerHTML = `<div class="alert alert-danger">${esc(msg || "Не удалось удалить")}</div>`;
+      showListAlert("danger", esc(msg || "Не удалось удалить"), 0);
     } catch (err) {
-      alertBox.innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`;
+      showListAlert("danger", esc(err.message), 0);
     } finally {
       btn.disabled = false;
     }
   }
 
-  tbody.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-action='delete-project']");
-    if (!btn) return;
-    handleDeleteClick(btn);
-  });
+  async function handleRenameClick(btn) {
+    const id = btn.getAttribute("data-project-id");
+    if (!id) return;
+    const proj = cachedProjects.find((x) => x.id === id);
+    const cur = proj && proj.name != null ? String(proj.name) : "";
+    const nn = globalThis.prompt("Новое имя проекта", cur);
+    if (nn == null) return;
+    const trimmed = String(nn).trim();
+    if (!trimmed) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/name`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof data.detail === "string" ? data.detail : res.statusText;
+        showListAlert("danger", esc(msg || "Не удалось переименовать"), 0);
+        return;
+      }
+      const ix = cachedProjects.findIndex((x) => x.id === id);
+      if (ix >= 0) {
+        cachedProjects[ix] = { ...cachedProjects[ix], ...data };
+        refreshListView();
+      }
+      showListAlert("success", "Имя проекта обновлено.", 3500);
+    } catch (err) {
+      showListAlert("danger", esc(err.message), 0);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function handleExportCsvClick(btn) {
+    const id = btn.getAttribute("data-project-id");
+    if (!id || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/export.csv`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = typeof data.detail === "string" ? data.detail : res.statusText;
+        showListAlert("danger", esc(msg || "Экспорт недоступен"), 0);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      let fname = "reviews-export.csv";
+      const m = cd.match(/filename\*=UTF-8''([^;\s]+)/i);
+      if (m) {
+        try {
+          fname = decodeURIComponent(m[1]);
+        } catch {
+          /* keep default */
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      a.rel = "noopener";
+      a.click();
+      URL.revokeObjectURL(url);
+      showListAlert("success", "Файл CSV загружается.", 3000);
+    } catch (err) {
+      showListAlert("danger", esc(err.message), 0);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function handleSyncSheetClick(btn) {
+    const id = btn.getAttribute("data-project-id");
+    if (!id || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/sync-spreadsheet`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof data.detail === "string" ? data.detail : res.statusText;
+        showListAlert("danger", esc(msg || "Синхронизация не выполнена"), 0);
+        return;
+      }
+      const msg = typeof data.message === "string" && data.message.trim() ? data.message.trim() : "Готово.";
+      showListAlert("success", esc(msg), 5000);
+      await load();
+    } catch (err) {
+      showListAlert("danger", esc(err.message), 0);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function handleShareClick(btn) {
+    const id = btn.getAttribute("data-project-id");
+    if (!id) return;
+    const url = `${globalThis.location.origin}/projects/${encodeURIComponent(id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showListAlert("success", "Ссылка на проект скопирована в буфер обмена.", 3500);
+    } catch {
+      globalThis.prompt("Скопируйте ссылку вручную:", url);
+    }
+  }
+
+  async function onProjectMenuAction(e) {
+    const btn = e.target.closest("button[data-action][data-project-id]");
+    if (!btn || btn.disabled) return;
+    const action = btn.getAttribute("data-action");
+    if (action === "delete-project") {
+      e.preventDefault();
+      await handleDeleteClick(btn);
+      return;
+    }
+    if (action === "rename-project") {
+      e.preventDefault();
+      await handleRenameClick(btn);
+      return;
+    }
+    if (action === "export-csv") {
+      e.preventDefault();
+      await handleExportCsvClick(btn);
+      return;
+    }
+    if (action === "sync-sheet") {
+      e.preventDefault();
+      await handleSyncSheetClick(btn);
+      return;
+    }
+    if (action === "share-project") {
+      e.preventDefault();
+      await handleShareClick(btn);
+    }
+  }
+
+  tbody.addEventListener("click", onProjectMenuAction);
 
   mobileList?.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-action='delete-project']");
-    if (btn) {
-      e.preventDefault();
-      e.stopPropagation();
-      handleDeleteClick(btn);
-    }
+    onProjectMenuAction(e);
   });
 
   showPostRedirectToast();

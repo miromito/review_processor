@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -22,6 +23,7 @@ from app.schemas.api import (
     ProjectCreate,
     ProjectCreateResponse,
     ProjectDetail,
+    ProjectRenameBody,
     ProjectSummary,
     ReviewByDateItem,
     ReviewsByDateResponse,
@@ -37,6 +39,7 @@ from app.schemas.api import (
 )
 from app.services import files
 from app.services.dashboard import build_dashboard, build_scatter_points, list_reviews_for_date
+from app.services.reviews_csv import build_reviews_csv_bytes
 from app.services.row_results import build_results_facets, filter_row_results, load_all_row_results
 from app.services.job import run_analysis_job, run_incremental_analysis_job
 from app.services.row_hash import content_hash
@@ -150,6 +153,7 @@ async def list_projects(db: Db) -> list[ProjectSummary]:
                 m_rows=int(doc.get("m_rows") or 0),
                 updated_at=doc.get("updated_at"),
                 created_at=doc.get("created_at"),
+                data_source=doc.get("data_source") or "file",
             )
         )
     return out
@@ -597,6 +601,54 @@ async def get_insight(project_id: str, db: Db) -> InsightResponse:
     if not text:
         return InsightResponse(insight="", generated_at=None)
     return InsightResponse(insight=str(text), generated_at=project.get("business_insight_at"))
+
+
+@router.patch("/{project_id}/name", response_model=ProjectSummary)
+async def rename_project(project_id: str, body: ProjectRenameBody, db: Db) -> ProjectSummary:
+    oid = _oid(project_id)
+    project = await projects_coll(db).find_one({"_id": oid})
+    if not project:
+        raise HTTPException(404, "Проект не найден")
+    new_name = body.name.strip()
+    if not new_name:
+        raise HTTPException(400, "Имя не может быть пустым")
+    now = _now()
+    await projects_coll(db).update_one({"_id": oid}, {"$set": {"name": new_name, "updated_at": now}})
+    doc = await projects_coll(db).find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Проект не найден")
+    return ProjectSummary(
+        id=str(doc["_id"]),
+        name=doc.get("name", ""),
+        phase=doc.get("phase", "awaiting_file"),
+        filename=doc.get("filename"),
+        m_rows=int(doc.get("m_rows") or 0),
+        updated_at=doc.get("updated_at"),
+        created_at=doc.get("created_at"),
+        data_source=doc.get("data_source") or "file",
+    )
+
+
+@router.get("/{project_id}/export.csv")
+async def export_reviews_csv(project_id: str, db: Db) -> Response:
+    """Плоский CSV: одна строка — один отзыв, колонки разметки и фильтров из файла."""
+    oid = _oid(project_id)
+    project = await projects_coll(db).find_one({"_id": oid})
+    if not project:
+        raise HTTPException(404, "Проект не найден")
+    if project.get("phase") != "complete":
+        raise HTTPException(400, "Экспорт доступен после успешного анализа")
+    rows = await load_all_row_results(db, project_id, project)
+    blob = build_reviews_csv_bytes(rows, list(project.get("filter_columns") or []))
+    label = (project.get("name") or "project").strip() or "project"
+    label = re.sub(r"[\r\n\t]+", " ", label)[:100]
+    utf8_name = quote(f"{label} — отзывы.csv", safe="")
+    disp = f'attachment; filename="reviews-export.csv"; filename*=UTF-8\'\'{utf8_name}'
+    return Response(
+        content=blob,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": disp},
+    )
 
 
 @router.delete("/{project_id}", status_code=204)
