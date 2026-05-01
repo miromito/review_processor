@@ -115,8 +115,12 @@
 </div>`;
   }
 
+  function projectCreatedDisplay(p) {
+    return p.created_at || p.updated_at;
+  }
+
   function renderMobileItem(p) {
-    const dt = formatDt(p.updated_at);
+    const dt = formatDt(projectCreatedDisplay(p));
     const name = esc(p.name);
     const id = esc(p.id);
     const file = esc(p.filename || "—");
@@ -160,7 +164,7 @@
     if (mobileList) mobileList.innerHTML = "";
     for (const p of projects) {
       const tr = document.createElement("tr");
-      const dt = formatDt(p.updated_at);
+      const dt = formatDt(projectCreatedDisplay(p));
       tr.innerHTML = `
           <td class="ra-project-name-cell">${projectNameCell(p)}</td>
           <td class="ra-project-col-status text-center">${projectStatusIndicator(p)}</td>

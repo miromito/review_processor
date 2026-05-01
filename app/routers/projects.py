@@ -141,7 +141,7 @@ async def get_job(job_id: str, db: Db) -> JobStatusResponse:
 
 @router.get("", response_model=list[ProjectSummary])
 async def list_projects(db: Db) -> list[ProjectSummary]:
-    cursor = projects_coll(db).find().sort("updated_at", -1).limit(200)
+    cursor = projects_coll(db).find().sort("created_at", -1).limit(200)
     out: list[ProjectSummary] = []
     async for doc in cursor:
         out.append(
