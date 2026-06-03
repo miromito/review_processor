@@ -944,9 +944,24 @@ details.ra-hint {
   letter-spacing: -0.02em;
 }
 
+/* Страница «новый проект» — одна узкая колонка по центру */
+.ra-project-new {
+  width: 100%;
+  max-width: 38rem;
+  margin-inline: auto;
+}
+
+.ra-project-new .page-lead {
+  max-width: none;
+}
+
 /* Форма «новый проект» — узкая колонка */
 .narrow-form {
   max-width: 38rem;
+}
+
+.ra-project-new .narrow-form {
+  max-width: none;
 }
 
 /* Вкладки «Файл / Google Таблица» */
