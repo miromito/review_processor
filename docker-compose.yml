@@ -22,8 +22,9 @@ services:
       context: .
       args:
         APP_VERSION: ${APP_VERSION:-local}
+    # Только localhost: снаружи HTTPS через nginx на хосте (см. deploy/nginx/).
     ports:
-      - "80:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGODB_DB: review_analytics
