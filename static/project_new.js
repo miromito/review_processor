@@ -16,10 +16,18 @@
     return Boolean(paneSheet && paneSheet.classList.contains("active"));
   }
 
-  /** После открытия вкладки «Google Таблица» — фокус в поле ссылки. */
-  tabSheet?.addEventListener("shown.bs.tab", () => {
-    const u = document.getElementById("sheetUrl");
-    u?.focus();
+  const TEMPLATE_SHEET_URL =
+    "https://docs.google.com/spreadsheets/d/1NVXr2YUAeEPC1EEbxRAGtws6oUTQsOY0qB9BYA6b11E";
+
+  /** После открытия вкладки «Google Таблица» — фокус в поле ссылки и копирование шаблона. */
+  tabSheet?.addEventListener("shown.bs.tab", async () => {
+    sheetUrlEl?.focus();
+    try {
+      await navigator.clipboard.writeText(TEMPLATE_SHEET_URL);
+      show("Ссылка на шаблон Google Таблицы скопирована в буфер обмена.", "success");
+    } catch {
+      show("Не удалось скопировать ссылку автоматически.", "warning");
+    }
   });
 
   btn.addEventListener("click", async () => {

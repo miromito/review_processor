@@ -12,6 +12,14 @@ def count_tokens(text: str, model: str) -> int:
     return len(enc.encode(text or ""))
 
 
+def _cell_as_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
 def prefix_rows_by_token_limit(
     rows: list[dict[str, Any]],
     text_column: str,
@@ -22,11 +30,7 @@ def prefix_rows_by_token_limit(
     total = 0
     k = 0
     for row in rows:
-        cell = row.get(text_column, "")
-        if cell is None:
-            cell = ""
-        if not isinstance(cell, str):
-            cell = str(cell)
+        cell = _cell_as_str(row.get(text_column))
         t = count_tokens(cell, model)
         if total + t <= token_limit:
             total += t
@@ -44,11 +48,7 @@ def count_batch_payload_tokens(
 ) -> int:
     payload: list[dict[str, Any]] = []
     for offset, row in enumerate(rows_slice):
-        text = row.get(text_column, "")
-        if text is None:
-            text = ""
-        if not isinstance(text, str):
-            text = str(text)
+        text = _cell_as_str(row.get(text_column))
         payload.append({"index": start_index + offset, "text": text})
     return count_tokens(json.dumps(payload, ensure_ascii=False), model)
 

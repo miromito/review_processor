@@ -32,7 +32,9 @@
     <div class="row g-3">
       <div class="col-md-4">
         <label class="form-label" for="textColumn">Текст отзыва</label>
-        <select class="form-select" id="textColumn" aria-label="Колонка с текстом"></select>
+        <select class="form-select" id="textColumn" aria-label="Колонка с текстом">
+          <option value="">— выберите колонку —</option>
+        </select>
       </div>
       <div class="col-md-4">
         <label class="form-label" for="dateColumn">Дата (необязательно)</label>
@@ -45,7 +47,22 @@
         <select class="form-select" id="filterColumns" multiple size="5" aria-label="Колонки фильтров"></select>
       </div>
     </div>
-    <div class="row g-3 mt-1">
+    <div
+      class="border rounded-3 p-3 mt-3 bg-body-tertiary d-none"
+      id="tokenUsageBlock"
+      role="status"
+      aria-live="polite"
+      aria-label="Использование токенов проекта"
+    >
+      <div class="d-flex flex-wrap align-items-baseline gap-2">
+        <span class="small text-muted">Токены:</span>
+        <span class="fw-semibold tabular-nums" id="tokenUsageValue">—</span>
+        <span class="text-muted" aria-hidden="true">/</span>
+        <span class="fw-semibold tabular-nums" id="tokenLimitValue">{{ token_limit_t }}</span>
+      </div>
+      <p class="form-text small text-muted mb-0 mt-1" id="tokenUsageHint"></p>
+    </div>
+    <div class="row g-3 mt-3">
       <div class="col-12 col-lg-8">
         <label class="form-label" for="topicCount">Уникальных тем на весь датасет</label>
         <div class="d-flex flex-wrap align-items-center gap-3">
@@ -68,28 +85,7 @@
         <p class="form-text small text-muted mb-0">Одна шкала тем на проект. При анализе несколькими пакетами в модель передаётся список тем из уже обработанных отзывов, чтобы согласовать формулировки и при необходимости объединять близкие смыслы.</p>
       </div>
     </div>
-    <div class="d-none border rounded-3 p-3 mb-3 bg-body" id="sheetConfigBlock" role="region" aria-label="Параметры Google Таблицы">
-      <h3 class="h6">Таблица: опрос и алерты</h3>
-      <p class="small text-muted">Доступно только при источнике «таблица». Сервер периодически скачивает CSV, добавляет <strong>новые</strong> строки (по хэшу) и дозапускает анализ.</p>
-      <div class="row g-3">
-        <div class="col-12 col-sm-4">
-          <label class="form-label" for="syncInterval">Интервал опроса (мин.)</label>
-          <input type="number" class="form-control" id="syncInterval" min="5" max="10080" value="60"
-                 aria-describedby="syncIntervalHelp" />
-          <p class="form-text small" id="syncIntervalHelp">От 5 минут до 7 суток.</p>
-        </div>
-        <div class="col-12 col-sm-8 d-flex flex-column">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="alertNeg" aria-describedby="alertNegHelp" />
-            <label class="form-check-label" for="alertNeg">Письмо, если в новом пакете много негативов</label>
-          </div>
-          <p class="form-text small mb-2" id="alertNegHelp">Нужен e-mail в поле уведомлений выше. См. долю негативов среди <strong>только что обработанных</strong> новых отзывов.</p>
-          <label class="form-label" for="alertNegPct">Порог, % негативов</label>
-          <input type="number" class="form-control" id="alertNegPct" min="0" max="100" value="30" style="max-width: 6rem" aria-label="Порог процента негативных в новом пакете" />
-        </div>
-      </div>
-    </div>
-    <div class="row g-3 mt-1">
+    <div class="row g-3 mt-3">
       <div class="col-12 col-md-6">
         <label class="form-label" for="notificationEmail">E-mail для уведомлений</label>
         <input
@@ -107,8 +103,51 @@
         </p>
       </div>
     </div>
-    <button type="button" class="btn btn-primary mt-3" id="btnMapping" aria-label="Запустить анализ отзывов">Запустить анализ</button>
-    <div id="mappingAlert" class="mt-2" role="status"></div>
+    <div class="d-none border rounded-3 p-3 mt-3 bg-body" id="sheetConfigBlock" role="region" aria-label="Параметры Google Таблицы">
+      <h3 class="h6 mb-2">Таблица: опрос и алерты</h3>
+      <p class="small text-muted mb-3">Доступно только при источнике «таблица». Сервер периодически скачивает CSV, добавляет <strong>новые</strong> строки (по хэшу) и дозапускает анализ.</p>
+      <div class="row g-3">
+        <div class="col-12 col-sm-6 col-lg-4">
+          <label class="form-label" for="syncInterval">Интервал опроса (мин.)</label>
+          <input
+            type="number"
+            class="form-control"
+            id="syncInterval"
+            min="5"
+            max="10080"
+            value="60"
+            style="max-width: 8rem"
+            aria-describedby="syncIntervalHelp"
+          />
+          <p class="form-text small mb-0" id="syncIntervalHelp">От 5 минут до 7 суток.</p>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-4">
+          <label class="form-label" for="alertNegPct">Порог, % негативов</label>
+          <input
+            type="number"
+            class="form-control"
+            id="alertNegPct"
+            min="0"
+            max="100"
+            value="30"
+            style="max-width: 6rem"
+            aria-describedby="alertNegHelp"
+            aria-label="Порог процента негативных в новом пакете"
+          />
+        </div>
+        <div class="col-12">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="alertNeg" aria-describedby="alertNegHelp" />
+            <label class="form-check-label" for="alertNeg">Письмо, если в новом пакете много негативов</label>
+          </div>
+          <p class="form-text small mb-0" id="alertNegHelp">
+            Нужен e-mail в поле уведомлений выше. См. долю негативов среди <strong>только что обработанных</strong> новых отзывов.
+          </p>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary mt-3 mb-2" id="btnMapping" aria-label="Запустить анализ отзывов">Запустить анализ</button>
+    <div id="mappingAlert" class="mt-2 mb-1" role="status"></div>
   </div>
 </section>
 
@@ -442,7 +481,8 @@
     </div>
   </div>
 </section>
-
+{% endblock %}
+{% block overlays %}
 <div class="modal fade" id="reviewsByDateModal" tabindex="-1" aria-labelledby="reviewsByDateTitle" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">

@@ -74,6 +74,16 @@ def _project_detail_js_mtime() -> str:
         return "0"
 
 
+def _app_css_mtime() -> str:
+    try:
+        return str(int((_STATIC_ROOT / "app.css").stat().st_mtime))
+    except OSError:
+        return "0"
+
+
+templates.env.globals["app_css_v"] = _app_css_mtime
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()

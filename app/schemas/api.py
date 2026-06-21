@@ -33,6 +33,8 @@ class ProjectSummary(BaseModel):
     phase: ProjectPhase
     filename: str | None
     m_rows: int
+    tokens_used: int | None = None
+    token_limit_t: int | None = None
     updated_at: datetime | None
     created_at: datetime | None
     data_source: Literal["file", "spreadsheet"] = "file"
@@ -55,6 +57,7 @@ class ProjectDetail(BaseModel):
     filter_columns: list[str]
     k_rows: int | None
     m_rows: int | None
+    tokens_used: int | None = None
     token_limit_t: int | None
     last_job_id: str | None = None
     error_message: str | None = None
@@ -120,6 +123,13 @@ class TokenMappingResponse(BaseModel):
     tokens_used_for_k: int
     full_file_fits: bool
     phase: ProjectPhase
+
+
+class TokenEstimateResponse(BaseModel):
+    tokens_used: int
+    token_limit_t: int
+    k_rows: int
+    m_rows: int
 
 
 class RowResult(BaseModel):

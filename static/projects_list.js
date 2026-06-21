@@ -46,6 +46,19 @@
     return iso ? new Date(iso).toLocaleString("ru-RU") : "—";
   }
 
+  function formatTokenNum(n) {
+    return Number(n).toLocaleString("ru-RU");
+  }
+
+  function projectTokensLabel(p) {
+    const used = p.tokens_used;
+    const limit = p.token_limit_t;
+    if (used == null) return "—";
+    const usedStr = formatTokenNum(used);
+    if (limit != null) return `${usedStr} / ${formatTokenNum(limit)}`;
+    return usedStr;
+  }
+
   function projectNameCell(p) {
     const name = esc(p.name);
     const id = esc(p.id);
@@ -125,6 +138,7 @@
     const id = esc(p.id);
     const file = esc(p.filename || "—");
     const rows = p.m_rows ?? 0;
+    const tokens = projectTokensLabel(p);
     const titleRow = p.phase === "analyzing"
       ? `<span class="fw-semibold d-block text-truncate">${name}</span>`
       : `<a class="fw-semibold text-decoration-none d-block text-truncate" href="/projects/${id}">${name}</a>`;
@@ -146,9 +160,9 @@
             </div>
           </div>
         </div>
-        <div class="d-flex justify-content-between gap-2 small text-muted mt-2 pt-2 border-top">
-          <span>${rows} строк</span>
-          <span class="text-nowrap">${esc(dt)}</span>
+        <div class="d-flex flex-wrap justify-content-between gap-x-2 gap-y-1 small text-muted mt-2 pt-2 border-top">
+          <span class="text-break">${rows} строк · ${esc(tokens)}</span>
+          <span class="text-nowrap flex-shrink-0">${esc(dt)}</span>
         </div>
       </div>`;
   }
@@ -165,11 +179,13 @@
     for (const p of projects) {
       const tr = document.createElement("tr");
       const dt = formatDt(projectCreatedDisplay(p));
+      const tokens = projectTokensLabel(p);
       tr.innerHTML = `
           <td class="ra-project-name-cell">${projectNameCell(p)}</td>
           <td class="ra-project-col-status text-center">${projectStatusIndicator(p)}</td>
           <td>${esc(p.filename || "—")}</td>
           <td>${p.m_rows ?? 0}</td>
+          <td class="text-nowrap tabular-nums small">${esc(tokens)}</td>
           <td class="small">${dt}</td>
           <td class="text-end text-nowrap">${projectActionsMenu(p)}</td>`;
       tbody.append(tr);

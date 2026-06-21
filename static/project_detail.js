@@ -4,6 +4,7 @@
   /** Сообщение после успешной ручной проверки Google Таблицы (показать после reload). */
   const PROJECT_DETAIL_TOAST_KEY = "ra_project_detail_toast";
   let lastProjectJson = null;
+  let tokenEstimateAbort = null;
 
   const titleEl = document.getElementById("projectTitle");
   const badgeEl = document.getElementById("phaseBadge");
@@ -445,11 +446,74 @@
     charts = { sentiment: null, topicStack: null, pain: null, timeline: null, scatter: null };
   }
 
+  function formatTokenNum(n) {
+    return Number(n).toLocaleString("ru-RU");
+  }
+
+  function setTokenUsageVisible(visible) {
+    document.getElementById("tokenUsageBlock")?.classList.toggle("d-none", !visible);
+  }
+
+  function updateTokenUsageDisplay(used, k, m, textColumn) {
+    const valEl = document.getElementById("tokenUsageValue");
+    const hintEl = document.getElementById("tokenUsageHint");
+    if (!valEl) return;
+    const colLabel = textColumn ? ` «${textColumn}»` : "";
+    if (used == null) {
+      valEl.textContent = "—";
+      if (hintEl) hintEl.textContent = "";
+      return;
+    }
+    valEl.textContent = formatTokenNum(used);
+    if (!hintEl || k == null || m == null) return;
+    if (k < m) {
+      hintEl.textContent =
+        `Для колонки${colLabel}: лимит позволяет проанализировать ${formatTokenNum(k)} из ${formatTokenNum(m)} строк.`;
+      return;
+    }
+    hintEl.textContent = `Для колонки${colLabel}: все ${formatTokenNum(m)} строк помещаются в лимит токенов.`;
+  }
+
+  function valElLoading() {
+    const valEl = document.getElementById("tokenUsageValue");
+    if (valEl) valEl.textContent = "…";
+  }
+
+  async function refreshTokenEstimate() {
+    const textSel = document.getElementById("textColumn");
+    const col = textSel?.value?.trim();
+    if (!col || !s2 || s2.classList.contains("d-none")) {
+      setTokenUsageVisible(false);
+      updateTokenUsageDisplay(null);
+      return;
+    }
+    setTokenUsageVisible(true);
+    if (tokenEstimateAbort) tokenEstimateAbort.abort();
+    tokenEstimateAbort = new AbortController();
+    const { signal } = tokenEstimateAbort;
+    valElLoading();
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/token-estimate?text_column=${encodeURIComponent(col)}`,
+        { signal },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = typeof data.detail === "string" ? data.detail : "Не удалось оценить токены";
+        throw new Error(msg);
+      }
+      updateTokenUsageDisplay(data.tokens_used, data.k_rows, data.m_rows, col);
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      updateTokenUsageDisplay(null, null, null, col);
+    }
+  }
+
   function fillSelects(columns) {
     const textSel = document.getElementById("textColumn");
     const dateSel = document.getElementById("dateColumn");
     const filtSel = document.getElementById("filterColumns");
-    textSel.innerHTML = "";
+    textSel.innerHTML = '<option value="">— выберите колонку —</option>';
     dateSel.innerHTML = '<option value="">— нет —</option>';
     filtSel.innerHTML = "";
     for (const c of columns) {
@@ -457,6 +521,9 @@
       dateSel.append(new Option(c, c));
       filtSel.append(new Option(c, c));
     }
+    filtSel.size = globalThis.matchMedia("(max-width: 767.98px)").matches ? 3 : 5;
+    setTokenUsageVisible(false);
+    updateTokenUsageDisplay(null);
   }
 
   function chartFiltersQuery() {
@@ -700,6 +767,9 @@
 
     if (p.phase === "awaiting_mapping" && p.columns?.length) {
       fillSelects(p.columns);
+    } else {
+      setTokenUsageVisible(false);
+      updateTokenUsageDisplay(null);
     }
     if (p.phase === "error") {
       const err = p.error_message ? esc(p.error_message) : "Произошла ошибка при анализе.";
@@ -1938,6 +2008,10 @@
     const tv = document.getElementById("topicCountValue");
     if (tv) tv.textContent = tr.value;
     tr.setAttribute("aria-valuenow", tr.value);
+  });
+
+  document.getElementById("textColumn")?.addEventListener("change", () => {
+    refreshTokenEstimate();
   });
 
   document.getElementById("btnSyncSheet")?.addEventListener("click", async () => {

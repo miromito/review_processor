@@ -33,6 +33,7 @@ from app.schemas.api import (
     ScatterResponse,
     SpreadsheetImportRequest,
     TimelinePoint,
+    TokenEstimateResponse,
     TokenMappingResponse,
     TopicSentimentSlice,
     ManualSheetSyncResponse,
@@ -92,6 +93,21 @@ def _chart_filter_substrings(request: Request, project: dict[str, Any]) -> dict[
     return fc
 
 
+def _project_to_summary(doc: dict[str, Any]) -> ProjectSummary:
+    return ProjectSummary(
+        id=str(doc["_id"]),
+        name=doc.get("name", ""),
+        phase=doc.get("phase", "awaiting_file"),
+        filename=doc.get("filename"),
+        m_rows=int(doc.get("m_rows") or 0),
+        tokens_used=doc.get("tokens_used"),
+        token_limit_t=doc.get("token_limit_t"),
+        updated_at=doc.get("updated_at"),
+        created_at=doc.get("created_at"),
+        data_source=doc.get("data_source") or "file",
+    )
+
+
 def _project_to_detail(doc: dict[str, Any]) -> ProjectDetail:
     return ProjectDetail(
         id=str(doc["_id"]),
@@ -105,6 +121,7 @@ def _project_to_detail(doc: dict[str, Any]) -> ProjectDetail:
         filter_columns=list(doc.get("filter_columns") or []),
         k_rows=doc.get("k_rows"),
         m_rows=doc.get("m_rows"),
+        tokens_used=doc.get("tokens_used"),
         token_limit_t=doc.get("token_limit_t"),
         last_job_id=doc.get("last_job_id"),
         error_message=doc.get("error_message"),
@@ -144,18 +161,7 @@ async def list_projects(db: Db) -> list[ProjectSummary]:
     cursor = projects_coll(db).find().sort("created_at", -1).limit(200)
     out: list[ProjectSummary] = []
     async for doc in cursor:
-        out.append(
-            ProjectSummary(
-                id=str(doc["_id"]),
-                name=doc.get("name", ""),
-                phase=doc.get("phase", "awaiting_file"),
-                filename=doc.get("filename"),
-                m_rows=int(doc.get("m_rows") or 0),
-                updated_at=doc.get("updated_at"),
-                created_at=doc.get("created_at"),
-                data_source=doc.get("data_source") or "file",
-            )
-        )
+        out.append(_project_to_summary(doc))
     return out
 
 
@@ -339,6 +345,43 @@ async def sync_spreadsheet_now(
         new_rows=n_new,
         job_id=job_id,
         message=f"Обработано новых отзывов: {n_new}.",
+    )
+
+
+@router.get("/{project_id}/token-estimate", response_model=TokenEstimateResponse)
+async def estimate_project_tokens(
+    project_id: str,
+    text_column: Annotated[str, Query(min_length=1)],
+    db: Db,
+    settings: SettingsDep,
+) -> TokenEstimateResponse:
+    oid = _oid(project_id)
+    project = await projects_coll(db).find_one({"_id": oid})
+    if not project:
+        raise HTTPException(404, "Проект не найден")
+    if project.get("phase") not in ("awaiting_mapping", "awaiting_analysis"):
+        raise HTTPException(400, "Оценка токенов доступна после загрузки данных")
+
+    cols = set(project.get("columns") or [])
+    if text_column not in cols:
+        raise HTTPException(400, "Колонка текста отсутствует в файле")
+
+    cursor = project_rows_coll(db).find({"project_id": project_id}).sort("row_index", 1)
+    rows: list[dict[str, Any]] = []
+    async for doc in cursor:
+        rows.append(dict(doc.get("data") or {}))
+
+    k, m, used = prefix_rows_by_token_limit(
+        rows,
+        text_column,
+        settings.token_limit_t,
+        settings.openai_model,
+    )
+    return TokenEstimateResponse(
+        tokens_used=used,
+        token_limit_t=settings.token_limit_t,
+        k_rows=k,
+        m_rows=m,
     )
 
 
@@ -616,16 +659,7 @@ async def rename_project(project_id: str, body: ProjectRenameBody, db: Db) -> Pr
     doc = await projects_coll(db).find_one({"_id": oid})
     if not doc:
         raise HTTPException(404, "Проект не найден")
-    return ProjectSummary(
-        id=str(doc["_id"]),
-        name=doc.get("name", ""),
-        phase=doc.get("phase", "awaiting_file"),
-        filename=doc.get("filename"),
-        m_rows=int(doc.get("m_rows") or 0),
-        updated_at=doc.get("updated_at"),
-        created_at=doc.get("created_at"),
-        data_source=doc.get("data_source") or "file",
-    )
+    return _project_to_summary(doc)
 
 
 @router.get("/{project_id}/export.csv")
